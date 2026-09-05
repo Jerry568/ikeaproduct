@@ -3,57 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (稽核日誌升級版)</title>
+    <title>超市商品效期管理系統 (門市營運全功能版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入條碼掃描專用函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .shadow-md, .shadow-sm { box-shadow: none !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-8">
 
     <div class="max-w-6xl mx-auto">
         <!-- 頂部標題與狀態 -->
-        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 no-print">
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期與商品庫系統</h1>
                 <span id="sync-status" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="text-gray-500">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
-                <button onclick="exportToCSV()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition font-medium shadow-sm">
+            <div class="flex items-center gap-3">
+                <div class="text-gray-500 text-sm">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
+                <button onclick="window.print()" class="bg-gray-700 text-white px-3 py-2 rounded-md hover:bg-gray-800 transition text-sm font-medium shadow-sm">
+                    🖨️ 列印巡查單
+                </button>
+                <button onclick="exportToCSV()" class="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm font-medium shadow-sm">
                     📥 匯出 CSV 報表
                 </button>
             </div>
         </div>
 
+        <!-- 列印專用抬頭 (僅列印時顯示) -->
+        <div class="hidden print:block mb-6 border-b pb-4">
+            <h1 class="text-2xl font-bold">門市即期品與庫存每日巡查單</h1>
+            <p class="text-sm text-gray-600">列印日期：<span id="print-date"></span></p>
+        </div>
+
         <!-- 📊 營運數據儀表板 (Stats Dashboard) -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 no-print">
+            <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
                 <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">總庫存件數</span>
-                <span id="stat-total-qty" class="text-2xl font-bold text-gray-800 mt-2">0 件</span>
+                <span id="stat-total-qty" class="text-2xl font-bold text-gray-800 mt-1">0 件</span>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-red-500 flex flex-col justify-between">
+            <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-red-500 flex flex-col justify-between">
                 <span class="text-xs font-semibold text-red-500 uppercase tracking-wider">🔴 嚴重屆期 (&lt;14天)</span>
-                <span id="stat-red-count" class="text-2xl font-bold text-red-600 mt-2">0 項</span>
+                <span id="stat-red-count" class="text-2xl font-bold text-red-600 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-yellow-500 flex flex-col justify-between">
+            <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-yellow-500 flex flex-col justify-between">
                 <span class="text-xs font-semibold text-yellow-600 uppercase tracking-wider">🟡 黃燈警告 (14-29天)</span>
-                <span id="stat-yellow-count" class="text-2xl font-bold text-yellow-600 mt-2">0 項</span>
+                <span id="stat-yellow-count" class="text-2xl font-bold text-yellow-600 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500 flex flex-col justify-between">
-                <span class="text-xs font-semibold text-green-600 uppercase tracking-wider">🟢 安全庫存 (30天以上)</span>
-                <span id="stat-green-count" class="text-2xl font-bold text-green-600 mt-2">0 項</span>
+            <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-green-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-green-600 uppercase tracking-wider">🟢 安全庫存 (&ge;30天)</span>
+                <span id="stat-green-count" class="text-2xl font-bold text-green-600 mt-1">0 項</span>
+            </div>
+            <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-purple-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-purple-600 uppercase tracking-wider">⚠️ 低庫存預警 (&le;2)</span>
+                <span id="stat-low-count" class="text-2xl font-bold text-purple-600 mt-1">0 項</span>
             </div>
         </div>
 
         <!-- 視圖切換與搜尋列 -->
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
-                <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 庫存清單視圖</button>
-                <button id="btn-view-calendar" onclick="switchView('calendar')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📅 效期月曆視圖</button>
-                <button id="btn-view-logs" onclick="switchView('logs')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📜 異動日誌</button>
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between no-print">
+            <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto overflow-x-auto">
+                <button id="btn-view-list" onclick="switchView('list')" class="px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap">📋 庫存清單</button>
+                <button id="btn-view-calendar" onclick="switchView('calendar')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap">📅 效期月曆</button>
+                <button id="btn-view-logs" onclick="switchView('logs')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap">📜 異動日誌</button>
             </div>
 
             <div class="w-full md:w-80 relative" id="search-box-container">
@@ -63,7 +81,7 @@
         </div>
 
         <!-- 新增商品表單 -->
-        <div id="add-item-card" class="bg-white p-6 rounded-lg shadow-md mb-8 relative">
+        <div id="add-item-card" class="bg-white p-6 rounded-lg shadow-md mb-8 relative no-print">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
                 <button type="button" onclick="toggleScanner()" id="scanner-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
@@ -90,18 +108,28 @@
 
             <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end relative">
                 <div class="flex-1 w-full relative">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (點上方按鈕、掃描條碼或打字聯想)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (可打字聯想或點上方點選)</label>
                     <input type="text" id="item-name" autocomplete="off" required placeholder="點選上方常用按鈕或輸入關鍵字..." class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                     <input type="hidden" id="item-barcode" value="">
                     
                     <!-- 智慧聯想下拉選單 -->
                     <div id="suggestions-box" class="hidden absolute left-0 right-0 top-16 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto"></div>
                 </div>
-                <div class="w-full md:w-32">
+                <div class="w-full md:w-28">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">促銷標籤</label>
+                    <select id="item-discount" class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <option value="">正價商品</option>
+                        <option value="8折">🏷️ 8折</option>
+                        <option value="7折">🏷️ 7折</option>
+                        <option value="5折">🔥 5折</option>
+                        <option value="即期出清">⚡ 即期出清</option>
+                    </select>
+                </div>
+                <div class="w-full md:w-28">
                     <label class="block text-sm font-medium text-gray-700 mb-1">數量</label>
                     <input type="number" id="item-quantity" required min="1" value="1" class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
-                <div class="w-full md:w-48">
+                <div class="w-full md:w-44">
                     <label class="block text-sm font-medium text-gray-700 mb-1">有效期限 (Best Before)</label>
                     <input type="date" id="item-date" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
@@ -111,19 +139,28 @@
 
         <!-- 視圖 A：列表清單容器 -->
         <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
-            <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
-                <span id="item-count-text">共載入 0 項商品</span>
-                <span>💡 提示：點擊數量按鈕可直接增減庫存</span>
+            <!-- 🎛️ 預警狀態篩選頁籤 -->
+            <div class="p-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-3 no-print">
+                <div class="flex flex-wrap gap-1.5 text-xs font-medium">
+                    <button onclick="setFilter('ALL')" id="filter-btn-ALL" class="px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-sm font-bold">全部商品</button>
+                    <button onclick="setFilter('RED')" id="filter-btn-RED" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-700">🔴 屆期 (&lt;14天)</button>
+                    <button onclick="setFilter('YELLOW')" id="filter-btn-YELLOW" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-yellow-100 hover:text-yellow-800">🟡 警告 (&lt;30天)</button>
+                    <button onclick="setFilter('GREEN')" id="filter-btn-GREEN" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-700">🟢 安全 (&ge;30天)</button>
+                    <button onclick="setFilter('EXPIRED')" id="filter-btn-EXPIRED" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300">⚫️ 已過期</button>
+                    <button onclick="setFilter('LOW_STOCK')" id="filter-btn-LOW_STOCK" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-purple-100 hover:text-purple-700">⚠️ 低庫存 (&le;2)</button>
+                </div>
+                <span id="item-count-text" class="text-xs text-gray-500">共載入 0 項商品</span>
             </div>
+
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
                     <tr>
-                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 條碼</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 促銷標籤</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">有效期限</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">剩餘天數</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 text-center">剩餘數量</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">狀態預警</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700 text-center">操作</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 text-center no-print">操作</th>
                     </tr>
                 </thead>
                 <tbody id="inventory-list" class="divide-y divide-gray-200">
@@ -178,12 +215,14 @@
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
+        document.getElementById('print-date').textContent = today.toLocaleDateString('zh-TW');
 
         let currentInventory = [];
         let currentLogs = [];
         let productDatabase = {};
         let db, inventoryCol, productsCol, logsCol, firestoreMethods;
         let currentView = 'list'; 
+        let currentStatusFilter = 'ALL'; // 篩選狀態：ALL, RED, YELLOW, GREEN, EXPIRED, LOW_STOCK
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
         let html5QrCode = null;
@@ -202,12 +241,11 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 📝 寫入稽核日誌
         async function logActivity(type, itemName, detail) {
             if (!db) return;
             try {
                 await firestoreMethods.addDoc(logsCol, {
-                    type: type,       // ➕ 新增, 🔄 數量調整, ❌ 刪除
+                    type: type,
                     itemName: itemName,
                     detail: detail,
                     timestamp: new Date().toISOString()
@@ -217,22 +255,44 @@
             }
         }
 
-        // 更新儀表板數據
+        // 切換預警狀態篩選頁籤
+        window.setFilter = function(filterType) {
+            currentStatusFilter = filterType;
+            const filterBtns = ['ALL', 'RED', 'YELLOW', 'GREEN', 'EXPIRED', 'LOW_STOCK'];
+            
+            filterBtns.forEach(type => {
+                const btn = document.getElementById(`filter-btn-${type}`);
+                if (btn) {
+                    if (type === filterType) {
+                        btn.className = "px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-sm font-bold";
+                    } else {
+                        btn.className = "px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300";
+                    }
+                }
+            });
+            renderTable();
+        };
+
         function updateDashboardStats() {
             let totalQty = 0;
             let redCount = 0;
             let yellowCount = 0;
             let greenCount = 0;
+            let lowCount = 0;
 
             currentInventory.forEach(item => {
                 const qty = parseInt(item.quantity) || 0;
                 totalQty += qty;
 
+                if (qty <= 2) lowCount++;
+
                 const expiryDate = new Date(item.expiry);
                 expiryDate.setHours(0, 0, 0, 0);
                 const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
 
-                if (diffDays < 14) {
+                if (diffDays < 0) {
+                    // 已過期
+                } else if (diffDays < 14) {
                     redCount++;
                 } else if (diffDays < 30) {
                     yellowCount++;
@@ -245,6 +305,7 @@
             document.getElementById('stat-red-count').textContent = `${redCount} 項`;
             document.getElementById('stat-yellow-count').textContent = `${yellowCount} 項`;
             document.getElementById('stat-green-count').textContent = `${greenCount} 項`;
+            document.getElementById('stat-low-count').textContent = `${lowCount} 項`;
         }
 
         function renderQuickButtons() {
@@ -370,10 +431,9 @@
             const btnLogs = document.getElementById('btn-view-logs');
             const searchBox = document.getElementById('search-box-container');
 
-            // 重置按鈕樣式
-            btnList.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
-            btnCal.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
-            btnLogs.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+            btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
+            btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
+            btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
 
             if (viewType === 'list') {
                 listContainer.classList.remove('hidden');
@@ -381,7 +441,7 @@
                 logsContainer.classList.add('hidden');
                 addItemCard.classList.remove('hidden');
                 searchBox.classList.remove('hidden');
-                btnList.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
                 renderTable();
             } else if (viewType === 'calendar') {
                 listContainer.classList.add('hidden');
@@ -389,15 +449,15 @@
                 logsContainer.classList.add('hidden');
                 addItemCard.classList.remove('hidden');
                 searchBox.classList.add('hidden');
-                btnCal.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
                 renderCalendar();
             } else if (viewType === 'logs') {
                 listContainer.classList.add('hidden');
                 calContainer.classList.add('hidden');
                 logsContainer.classList.remove('hidden');
-                addItemCard.classList.add('hidden'); // 檢視日誌時隱藏新增表單，保留畫面空間
+                addItemCard.classList.add('hidden');
                 searchBox.classList.add('hidden');
-                btnLogs.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
                 renderLogs();
             }
         };
@@ -408,17 +468,17 @@
             const diffTime = expiryDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             
-            let status = '', rowClass = '', badgeClass = '';
+            let status = '', rowClass = '', badgeClass = '', statusCategory = '';
             if (diffDays < 0) {
-                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700';
+                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700'; statusCategory = 'EXPIRED';
             } else if (diffDays < 14) {
-                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900'; badgeClass = 'bg-red-50 border-red-200 text-red-700';
+                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900'; badgeClass = 'bg-red-50 border-red-200 text-red-700'; statusCategory = 'RED';
             } else if (diffDays < 30) {
-                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800';
+                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800'; statusCategory = 'YELLOW';
             } else {
-                status = '安全'; rowClass = 'bg-green-50 text-green-900'; badgeClass = 'bg-green-50 border-green-200 text-green-700';
+                status = '安全'; rowClass = 'bg-green-50 text-green-900'; badgeClass = 'bg-green-50 border-green-200 text-green-700'; statusCategory = 'GREEN';
             }
-            return { diffDays, status, rowClass, badgeClass };
+            return { diffDays, status, rowClass, badgeClass, statusCategory };
         }
 
         function renderTable() {
@@ -426,35 +486,60 @@
             const keyword = document.getElementById('search-input').value.trim().toLowerCase();
             tbody.innerHTML = '';
 
-            let filteredData = currentInventory.filter(item => item.name.toLowerCase().includes(keyword));
+            let filteredData = currentInventory.filter(item => {
+                const nameMatch = item.name.toLowerCase().includes(keyword);
+                const { statusCategory } = calculateStatus(item.expiry);
+                const isLowStock = (parseInt(item.quantity) || 0) <= 2;
+
+                if (!nameMatch) return false;
+
+                if (currentStatusFilter === 'ALL') return true;
+                if (currentStatusFilter === 'LOW_STOCK') return isLowStock;
+                return statusCategory === currentStatusFilter;
+            });
+
             filteredData.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
 
             document.getElementById('item-count-text').textContent = `顯示 ${filteredData.length} / 共 ${currentInventory.length} 項商品`;
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">沒有找到符合的商品資料</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
                 return;
             }
             
             filteredData.forEach(item => {
                 const { diffDays, status, rowClass } = calculateStatus(item.expiry);
                 let statusIcon = status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
+                const isLowStock = (parseInt(item.quantity) || 0) <= 2;
+
+                // 促銷折數標籤渲染
+                let discountBadge = '';
+                if (item.discount) {
+                    discountBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200">🏷️ ${item.discount}</span>`;
+                }
+
+                // 低庫存警告標籤
+                let lowStockBadge = isLowStock ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white shadow-sm">⚠️ 補貨預警</span>` : '';
 
                 const tr = document.createElement('tr');
                 tr.className = `hover:bg-opacity-80 transition ${rowClass}`;
                 tr.innerHTML = `
-                    <td class="px-6 py-4 font-medium">${item.name}</td>
+                    <td class="px-6 py-4 font-medium flex items-center">
+                        <span>${item.name}</span>
+                        ${discountBadge}
+                        ${lowStockBadge}
+                    </td>
                     <td class="px-6 py-4">${item.expiry}</td>
                     <td class="px-6 py-4 font-bold">${diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays} 天</td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex items-center justify-center gap-3">
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">-</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm no-print">-</button>
                             <span class="w-8 text-center font-bold text-lg">${item.quantity}</span>
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">+</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm no-print">+</button>
                         </div>
                     </td>
                     <td class="px-6 py-4">${statusIcon}${status}</td>
-                    <td class="px-6 py-4 text-center">
+                    <td class="px-6 py-4 text-center no-print">
                         <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-3 py-1 rounded shadow-sm border border-red-200 hover:bg-red-50">刪除</button>
                     </td>
                 `;
@@ -537,7 +622,8 @@
                     expiryMap[dateKey].forEach(item => {
                         const { diffDays, badgeClass } = calculateStatus(item.expiry);
                         let icon = diffDays < 0 ? '⚫️' : diffDays < 14 ? '🔴' : diffDays < 30 ? '🟡' : '🟢';
-                        htmlContent += `<div class="border text-xs px-1.5 py-0.5 rounded truncate ${badgeClass}" title="${item.name}">${icon} ${item.name} (${item.quantity})</div>`;
+                        let discountTag = item.discount ? ` (${item.discount})` : '';
+                        htmlContent += `<div class="border text-xs px-1.5 py-0.5 rounded truncate ${badgeClass}" title="${item.name}">${icon} ${item.name}${discountTag} (${item.quantity})</div>`;
                     });
                 }
                 htmlContent += `</div>`;
@@ -579,7 +665,7 @@
             db = firestore.getFirestore(app);
             inventoryCol = firestore.collection(db, "inventory");
             productsCol = firestore.collection(db, "products");
-            logsCol = firestore.collection(db, "audit_logs"); // 稽核日誌集合
+            logsCol = firestore.collection(db, "audit_logs");
 
             firestore.onSnapshot(productsCol, (snapshot) => {
                 if (snapshot.empty) {
@@ -598,13 +684,11 @@
                 }
             });
 
-            // 同步監聽稽核日誌
             firestore.onSnapshot(logsCol, (snapshot) => {
                 currentLogs = [];
                 snapshot.forEach((docSnap) => {
                     currentLogs.push({ id: docSnap.id, ...docSnap.data() });
                 });
-                // 按時間由新到舊排序
                 currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 if (currentView === 'logs') renderLogs();
             });
@@ -641,7 +725,6 @@
             const itemRef = firestoreMethods.doc(db, "inventory", id);
             await firestoreMethods.updateDoc(itemRef, { quantity: newQty });
 
-            // 寫入日誌
             const actionText = delta > 0 ? `數量增加 +${delta} (總數: ${newQty})` : `數量減少 ${delta} (總數: ${newQty})`;
             await logActivity("🔄 數量調整", name, actionText);
         };
@@ -650,17 +733,17 @@
             if (!db) return alert("連線異常，無法刪除資料");
             if (confirm(`確定要從庫存中刪除「${name}」嗎？`)) {
                 await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
-                // 寫入日誌
                 await logActivity("❌ 刪除品項", name, "已將該筆庫存記錄完整移除");
             }
         };
 
         window.exportToCSV = function() {
-            let csvContent = "商品名稱,有效期限,剩餘天數,剩餘數量,狀態\n";
+            let csvContent = "商品名稱,促銷標籤,有效期限,剩餘天數,剩餘數量,狀態\n";
             currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
                 const { diffDays, status } = calculateStatus(item.expiry);
                 const safeName = `"${item.name.replace(/"/g, '""')}"`;
-                csvContent += `${safeName},${item.expiry},${diffDays},${item.quantity},${status}\n`;
+                const discountText = item.discount || "正價";
+                csvContent += `${safeName},${discountText},${item.expiry},${diffDays},${item.quantity},${status}\n`;
             });
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
@@ -677,18 +760,20 @@
             if (!db) return alert("連線異常，無法新增資料");
             const name = document.getElementById('item-name').value;
             const barcode = document.getElementById('item-barcode').value;
+            const discount = document.getElementById('item-discount').value;
             const quantity = parseInt(document.getElementById('item-quantity').value, 10);
             const expiry = document.getElementById('item-date').value;
             
             await firestoreMethods.addDoc(inventoryCol, {
                 name: name,
                 barcode: barcode || "",
+                discount: discount || "",
                 quantity: quantity || 1,
                 expiry: expiry
             });
 
-            // 寫入日誌
-            await logActivity("➕ 新增商品", name, `初始數量: ${quantity || 1}, 有效期限: ${expiry}`);
+            const discountMsg = discount ? ` [標籤: ${discount}]` : '';
+            await logActivity("➕ 新增商品", name, `初始數量: ${quantity || 1}, 有效期限: ${expiry}${discountMsg}`);
 
             if (barcode && !productDatabase[barcode]) {
                 await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
