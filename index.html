@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與供應鏈管理系統 (條碼槍極致版)</title>
+    <title>超市商品效期與進銷存損益管理系統</title>
     <!-- PWA 與手機原生 App 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -34,7 +34,7 @@
         <!-- 頂部標題與狀態 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-3 no-print">
             <div class="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start flex-wrap">
-                <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">📦 效期與庫存系統</h1>
+                <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">📦 效期與損益管理系統</h1>
                 <div class="flex items-center gap-1.5 flex-wrap">
                     <span id="sync-status" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2 py-1 rounded-full font-bold">連線中...</span>
                     <!-- 🔌 實體條碼槍狀態燈 -->
@@ -74,8 +74,8 @@
             <p class="text-xs text-gray-600">列印日期：<span id="print-date"></span></p>
         </div>
 
-        <!-- 📊 營運數據與財務儀表板 (Stats & Asset Dashboard) -->
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-4 no-print">
+        <!-- 📊 營運數據與財務損益儀表板 (Stats & Profit Analytics Dashboard) -->
+        <div class="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-2 mb-4 no-print">
             <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-blue-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-gray-400 uppercase">總庫存</span>
                 <span id="stat-total-qty" class="text-base font-bold text-gray-800 dark:text-white mt-0.5">0 件</span>
@@ -96,17 +96,27 @@
                 <span class="text-[10px] font-semibold text-purple-600 dark:text-purple-400 uppercase">⚠️ 低庫存(&le;2)</span>
                 <span id="stat-low-count" class="text-base font-bold text-purple-600 dark:text-purple-400 mt-0.5">0 項</span>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-gray-400 flex flex-col justify-between">
-                <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase">⚪️ 已售完</span>
-                <span id="stat-soldout-count" class="text-base font-bold text-gray-600 dark:text-gray-300 mt-0.5">0 項</span>
+
+            <!-- 💰 財務損益區塊 (Financial Analytics) -->
+            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-slate-500 flex flex-col justify-between">
+                <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">💵 總進貨成本</span>
+                <span id="stat-total-cost" class="text-base font-bold text-slate-700 dark:text-slate-300 mt-0.5">$0</span>
             </div>
             <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-indigo-500 flex flex-col justify-between">
-                <span class="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">💵 總金額</span>
+                <span class="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">🏷️ 預估銷售額</span>
                 <span id="stat-total-value" class="text-base font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">$0</span>
             </div>
+            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-emerald-500 flex flex-col justify-between">
+                <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase">💰 預估總毛利</span>
+                <span id="stat-total-profit" class="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">$0</span>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-teal-500 flex flex-col justify-between">
+                <span class="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase">📈 平均毛利率</span>
+                <span id="stat-margin-rate" class="text-base font-bold text-teal-600 dark:text-teal-400 mt-0.5">0%</span>
+            </div>
             <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-rose-600 flex flex-col justify-between">
-                <span class="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase">💸 報廢風險</span>
-                <span id="stat-risk-value" class="text-base font-bold text-rose-700 dark:text-rose-400 mt-0.5">$0</span>
+                <span class="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase">💸 報廢成本風險</span>
+                <span id="stat-risk-cost" class="text-base font-bold text-rose-700 dark:text-rose-400 mt-0.5">$0</span>
             </div>
         </div>
 
@@ -114,7 +124,7 @@
         <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm mb-4 no-print transition-colors border dark:border-gray-700">
             <div class="flex justify-between items-center cursor-pointer" onclick="toggleChartPanel()">
                 <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1">
-                    📈 庫存健康度圖表分析
+                    📈 庫存健康度與損益圖表分析
                 </h3>
                 <span id="chart-toggle-btn" class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
                     展開圖表 ▼
@@ -189,13 +199,18 @@
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">🚚 供應商</label>
                         <input type="text" id="item-supplier" placeholder="例: 統一" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架位置</label>
-                        <input type="text" id="item-location" placeholder="例: A1-02" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
+                    <div class="md:col-span-1">
+                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架</label>
+                        <input type="text" id="item-location" placeholder="A1-02" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
+                    </div>
+                    <!-- 💰 成本與售價欄位 -->
+                    <div class="md:col-span-1">
+                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">進價 ($)</label>
+                        <input type="number" id="item-cost" min="0" value="35" placeholder="成本" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-1">
-                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">單價 ($)</label>
-                        <input type="number" id="item-price" min="0" value="50" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
+                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">售價 ($)</label>
+                        <input type="number" id="item-price" min="0" value="50" placeholder="售價" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-1">
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">促銷</label>
@@ -215,7 +230,7 @@
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">有效期限</label>
                         <input type="date" id="item-date" required class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
-                    <div class="md:col-span-10 mt-1">
+                    <div class="md:col-span-9 mt-1">
                         <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition font-medium text-xs">確認新增至庫存</button>
                     </div>
                 </form>
@@ -245,16 +260,17 @@
                     <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                     <option value="零食餅乾">🍪 零食餅乾</option>
                     <option value="熟食調理">🍱 熟食調理</option>
-                    <option value="罐頭乾貨">🥫 罐頭乾貨</option>
+                    <option value="罐頭乾貨">罐 罐頭乾貨</option>
                     <option value="其他">📦 其他品項</option>
                 </select>
 
                 <!-- 排序選單 -->
                 <select id="sort-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded py-1.5 px-2 focus:ring-blue-500">
                     <option value="EXPIRY_ASC">⏳ 效期最近</option>
+                    <option value="PROFIT_DESC">💰 毛利高到低</option>
                     <option value="QTY_ASC">📉 數量少到多</option>
                     <option value="QTY_DESC">📈 數量多到少</option>
-                    <option value="PRICE_DESC">💰 單價高到低</option>
+                    <option value="PRICE_DESC">💰 售價高到低</option>
                     <option value="NAME_ASC">🔤 名稱排序</option>
                 </select>
 
@@ -295,7 +311,8 @@
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 類別</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">🚚 廠商</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">📍 貨架</th>
-                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">單價</th>
+                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">進價 / 售價</th>
+                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">預估毛利</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">有效期限</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">剩餘天數</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200 text-center">數量</th>
@@ -435,7 +452,7 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 🔌 實體條碼槍自動監聽邏輯 (Global Hardware Barcode Gun Listener)
+        // 🔌 實體條碼槍自動監聽邏輯
         let barcodeGunBuffer = "";
         let lastKeyTime = 0;
 
@@ -444,63 +461,54 @@
             const timeDiff = currentTime - lastKeyTime;
             lastKeyTime = currentTime;
 
-            // 如果兩字元輸入時間間隔 > 100ms，代表為人類手動打字，清空緩衝區
-            if (timeDiff > 100) {
-                barcodeGunBuffer = "";
-            }
+            if (timeDiff > 100) barcodeGunBuffer = "";
+            if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
 
-            // 忽視修飾鍵
-            if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
-                return;
-            }
-
-            // 條碼槍掃描結束通常會觸發 Enter 鍵
             if (e.key === 'Enter') {
                 if (barcodeGunBuffer.length >= 3) {
                     const scannedBarcode = barcodeGunBuffer.trim();
                     barcodeGunBuffer = "";
-                    
-                    // 如果輸入框正被聚焦，阻止表單預設提交行為
                     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
                         e.preventDefault();
                     }
-                    
                     await handleBarcodeGunScan(scannedBarcode);
                 }
                 barcodeGunBuffer = "";
                 return;
             }
 
-            // 只收集可列印字元
-            if (e.key.length === 1) {
-                barcodeGunBuffer += e.key;
-            }
+            if (e.key.length === 1) barcodeGunBuffer += e.key;
         });
 
-        // 🔌 處理條碼槍掃描結果
         async function handleBarcodeGunScan(barcode) {
             const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
             const existingItem = currentInventory.find(item => item.barcode === barcode || item.name === matchedName);
 
             if (existingItem) {
-                // 已存在商品：自動數量 +1
                 await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
                 speakText(`條碼槍：${matchedName}，數量加一`);
-                showToast(`🔌 [條碼槍] ${matchedName} 數量 +1 (現有: ${existingItem.quantity + 1})`);
+                showToast(`🔌 [條碼槍] ${matchedName} 數量 +1`);
             } else {
-                // 新品項：自動帶入表單並展開
                 document.getElementById('item-barcode').value = barcode;
                 document.getElementById('item-name').value = matchedName;
                 
                 const formContent = document.getElementById('add-form-content');
-                if (formContent.classList.contains('hidden')) {
-                    toggleAddForm();
-                }
+                if (formContent.classList.contains('hidden')) toggleAddForm();
                 
                 speakText(`條碼槍掃描新品：${matchedName}`);
                 showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
                 document.getElementById('item-quantity').focus();
             }
+        }
+
+        // 💰 折扣後實際單價計算
+        function getEffectiveUnitPrice(price, discount) {
+            if (!discount) return price;
+            if (discount === '8折') return price * 0.8;
+            if (discount === '7折') return price * 0.7;
+            if (discount === '5折') return price * 0.5;
+            if (discount === '即期出清') return price * 0.3;
+            return price;
         }
 
         window.onscroll = function() {
@@ -565,18 +573,18 @@
                 return;
             }
 
-            let csvContent = "商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,單價,估算採購金額\n";
+            let csvContent = "商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,預估進價,預估總進價成本\n";
             lowStockItems.forEach(item => {
                 const safeName = `"${item.name.replace(/"/g, '""')}"`;
                 const categoryText = item.category || "常溫商品";
                 const supplierText = item.supplier || "通用廠商";
                 const locationText = item.location || "未指定";
                 const qty = parseInt(item.quantity) || 0;
-                const price = parseFloat(item.price) || 0;
+                const cost = parseFloat(item.cost) || 0;
                 const suggestedQty = Math.max(10 - qty, 5);
-                const estAmount = suggestedQty * price;
+                const estAmount = suggestedQty * cost;
 
-                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${qty},${suggestedQty},${price},${estAmount}\n`;
+                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${qty},${suggestedQty},${cost},${estAmount}\n`;
             });
 
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -636,7 +644,7 @@
         window.openBarcodeModal = function(name, barcode, price, expiry) {
             const modal = document.getElementById('barcode-modal');
             document.getElementById('modal-item-name').textContent = name;
-            document.getElementById('modal-item-info').textContent = `單價: $${price} | 有效期限: ${expiry}`;
+            document.getElementById('modal-item-info').textContent = `售價: $${price} | 有效期限: ${expiry}`;
 
             const displayBarcode = barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000);
 
@@ -874,6 +882,7 @@
             });
         }
 
+        // 💰 算精細財務統計與損益分析
         function updateDashboardStats() {
             let totalQty = 0;
             let redCount = 0;
@@ -882,20 +891,31 @@
             let expiredCount = 0;
             let lowCount = 0;
             let soldOutCount = 0;
-            let totalValue = 0;
-            let riskValue = 0;
+
+            let totalCostVal = 0;   // 總進貨成本
+            let totalRevenueVal = 0; // 預估總銷售額
+            let totalProfitVal = 0;  // 預估總毛利
+            let riskCostVal = 0;     // 報廢成本風險
 
             currentInventory.forEach(item => {
                 const qty = parseInt(item.quantity) || 0;
                 const price = parseFloat(item.price) || 0;
-                const itemTotalVal = qty * price;
+                const cost = parseFloat(item.cost) || (price * 0.7); // 若無成本資料預設 7 折進價
+                
+                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
+                const itemTotalCost = qty * cost;
+                const itemTotalRevenue = qty * effectivePrice;
+                const itemTotalProfit = itemTotalRevenue - itemTotalCost;
 
                 totalQty += qty;
-                totalValue += itemTotalVal;
 
                 if (qty === 0) {
                     soldOutCount++;
                 } else {
+                    totalCostVal += itemTotalCost;
+                    totalRevenueVal += itemTotalRevenue;
+                    totalProfitVal += itemTotalProfit;
+
                     if (qty <= 2) lowCount++;
 
                     const expiryDate = new Date(item.expiry);
@@ -904,10 +924,10 @@
 
                     if (diffDays < 0) {
                         expiredCount++;
-                        riskValue += itemTotalVal;
+                        riskCostVal += itemTotalCost; // 累加過期商品的進貨成本
                     } else if (diffDays < 14) {
                         redCount++;
-                        riskValue += itemTotalVal;
+                        riskCostVal += itemTotalCost; // 累加屆期商品的進貨成本
                     } else if (diffDays < 30) {
                         yellowCount++;
                     } else {
@@ -916,14 +936,19 @@
                 }
             });
 
+            const marginRate = totalRevenueVal > 0 ? ((totalProfitVal / totalRevenueVal) * 100).toFixed(1) : "0.0";
+
             document.getElementById('stat-total-qty').textContent = `${totalQty} 件`;
             document.getElementById('stat-red-count').textContent = `${redCount} 項`;
             document.getElementById('stat-yellow-count').textContent = `${yellowCount} 項`;
             document.getElementById('stat-green-count').textContent = `${greenCount} 項`;
             document.getElementById('stat-low-count').textContent = `${lowCount} 項`;
-            document.getElementById('stat-soldout-count').textContent = `${soldOutCount} 項`;
-            document.getElementById('stat-total-value').textContent = `$${totalValue.toLocaleString('zh-TW')}`;
-            document.getElementById('stat-risk-value').textContent = `$${riskValue.toLocaleString('zh-TW')}`;
+
+            document.getElementById('stat-total-cost').textContent = `$${Math.round(totalCostVal).toLocaleString('zh-TW')}`;
+            document.getElementById('stat-total-value').textContent = `$${Math.round(totalRevenueVal).toLocaleString('zh-TW')}`;
+            document.getElementById('stat-total-profit').textContent = `$${Math.round(totalProfitVal).toLocaleString('zh-TW')}`;
+            document.getElementById('stat-margin-rate').textContent = `${marginRate}%`;
+            document.getElementById('stat-risk-cost').textContent = `$${Math.round(riskCostVal).toLocaleString('zh-TW')}`;
 
             updateSupplierDropdown();
             updateChart(redCount, yellowCount, greenCount, expiredCount, soldOutCount);
@@ -946,16 +971,17 @@
                     const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
                     if (cols.length >= 2) {
                         const name = cols[0];
-                        let discount = "", expiry = "", qty = 1, price = 50, category = "常溫商品", supplier = "未指定", location = "未指定";
+                        let discount = "", expiry = "", qty = 1, price = 50, cost = 35, category = "常溫商品", supplier = "未指定", location = "未指定";
 
-                        if (cols.length >= 6) {
+                        if (cols.length >= 7) {
                             category = cols[1] || "常溫商品";
                             supplier = cols[2] || "未指定";
                             location = cols[3] || "未指定";
-                            price = parseFloat(cols[4]) || 50;
-                            discount = (cols[5] === "正價" || !cols[5]) ? "" : cols[5];
-                            expiry = cols[6];
-                            qty = parseInt(cols[7], 10) || 1;
+                            cost = parseFloat(cols[4]) || 35;
+                            price = parseFloat(cols[5]) || 50;
+                            discount = (cols[6] === "正價" || !cols[6]) ? "" : cols[6];
+                            expiry = cols[7];
+                            qty = parseInt(cols[8], 10) || 1;
                         } else {
                             expiry = cols[1];
                             if (cols[2]) qty = parseInt(cols[2], 10) || 1;
@@ -968,6 +994,7 @@
                                 category: category,
                                 supplier: supplier,
                                 location: location,
+                                cost: cost,
                                 price: price,
                                 discount: discount,
                                 quantity: qty,
@@ -1213,9 +1240,19 @@
                 const qtyB = parseInt(b.quantity) || 0;
                 const priceA = parseFloat(a.price) || 0;
                 const priceB = parseFloat(b.price) || 0;
+                const costA = parseFloat(a.cost) || (priceA * 0.7);
+                const costB = parseFloat(b.cost) || (priceB * 0.7);
+
+                const effPriceA = getEffectiveUnitPrice(priceA, a.discount);
+                const effPriceB = getEffectiveUnitPrice(priceB, b.discount);
+
+                const profitA = (effPriceA - costA) * qtyA;
+                const profitB = (effPriceB - costB) * qtyB;
 
                 if (sortMode === 'EXPIRY_ASC') {
                     return new Date(a.expiry) - new Date(b.expiry);
+                } else if (sortMode === 'PROFIT_DESC') {
+                    return profitB - profitA;
                 } else if (sortMode === 'QTY_ASC') {
                     return qtyA - qtyB;
                 } else if (sortMode === 'QTY_DESC') {
@@ -1238,7 +1275,7 @@
             document.getElementById('btn-next-page').disabled = (currentPage >= totalPages);
 
             if (totalFilteredCount === 0) {
-                tbody.innerHTML = `<tr><td colspan="11" class="px-4 py-6 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12" class="px-4 py-6 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
                 return;
             }
 
@@ -1248,7 +1285,13 @@
                 const { diffDays, status, rowClass } = calculateStatus(item.expiry, item.quantity);
                 const qty = parseInt(item.quantity) || 0;
                 const price = parseFloat(item.price) || 0;
-                const subtotal = qty * price;
+                const cost = parseFloat(item.cost) || Math.round(price * 0.7);
+                
+                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
+                const unitProfit = effectivePrice - cost;
+                const totalProfit = unitProfit * qty;
+                const subtotal = qty * effectivePrice;
+
                 const categoryText = item.category || '常溫商品';
                 const supplierText = item.supplier || '未指定';
                 const locationText = item.location || '未指定';
@@ -1260,15 +1303,12 @@
                 let discountBadge = '';
                 if (item.discount && qty > 0) {
                     discountBadge = `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">🏷️ ${item.discount}</span>`;
-                } else if (qty > 0 && !item.discount) {
-                    if (diffDays >= 0 && diffDays < 7) {
-                        discountBadge = `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 animate-pulse">💡5折</span>`;
-                    } else if (diffDays >= 7 && diffDays < 14) {
-                        discountBadge = `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">💡7折</span>`;
-                    }
                 }
 
                 let lowStockBadge = isLowStock ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-600 text-white shadow-sm">⚠️低庫存</span>` : '';
+
+                // 毛利顏色標示
+                let profitBadgeClass = unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold animate-pulse";
 
                 const tr = document.createElement('tr');
                 tr.className = `hover:bg-opacity-80 transition ${rowClass}`;
@@ -1292,7 +1332,13 @@
                             📍 ${locationText}
                         </span>
                     </td>
-                    <td class="px-4 py-2 font-mono text-gray-700 dark:text-gray-300">$${price}</td>
+                    <td class="px-4 py-2 font-mono text-gray-700 dark:text-gray-300">
+                        <span class="text-gray-400 text-[10px]">$${cost} /</span> 
+                        <span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>
+                    </td>
+                    <td class="px-4 py-2 font-mono ${profitBadgeClass}">
+                        ${unitProfit >= 0 ? '+' : ''}$${Math.round(unitProfit)} <span class="text-[9px] text-gray-400 font-normal">(共$${Math.round(totalProfit)})</span>
+                    </td>
                     <td class="px-4 py-2 text-[11px]">${item.expiry}</td>
                     <td class="px-4 py-2 font-bold">${qty === 0 ? '-' : (diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays + ' 天')}</td>
                     <td class="px-4 py-2 text-center">
@@ -1302,7 +1348,7 @@
                             <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 font-bold text-gray-600 dark:text-gray-200 shadow-sm no-print">+</button>
                         </div>
                     </td>
-                    <td class="px-4 py-2 font-bold font-mono text-indigo-700 dark:text-indigo-400">$${subtotal.toLocaleString('zh-TW')}</td>
+                    <td class="px-4 py-2 font-bold font-mono text-indigo-700 dark:text-indigo-400">$${Math.round(subtotal).toLocaleString('zh-TW')}</td>
                     <td class="px-4 py-2 font-semibold">${statusIcon}${status}</td>
                     <td class="px-4 py-2 text-center no-print">
                         <div class="flex justify-center gap-1">
@@ -1526,7 +1572,7 @@
         };
 
         window.exportToCSV = function() {
-            let csvContent = "商品名稱,類別,供應商,貨架位置,單價,促銷標籤,有效期限,剩餘天數,剩餘數量,小計金額,狀態\n";
+            let csvContent = "商品名稱,類別,供應商,貨架位置,進價(成本),售價,單位預估毛利,促銷標籤,有效期限,剩餘天數,剩餘數量,預估銷售額,狀態\n";
             currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
                 const { diffDays, status } = calculateStatus(item.expiry, item.quantity);
                 const safeName = `"${item.name.replace(/"/g, '""')}"`;
@@ -1535,14 +1581,17 @@
                 const supplierText = item.supplier || "未指定";
                 const locationText = item.location || "未指定";
                 const price = parseFloat(item.price) || 0;
+                const cost = parseFloat(item.cost) || Math.round(price * 0.7);
+                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
+                const unitProfit = effectivePrice - cost;
                 const qty = parseInt(item.quantity) || 0;
-                const subtotal = price * qty;
-                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${price},${discountText},${item.expiry},${diffDays},${qty},${subtotal},${status}\n`;
+                const subtotal = effectivePrice * qty;
+                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${cost},${price},${unitProfit.toFixed(1)},${discountText},${item.expiry},${diffDays},${qty},${subtotal.toFixed(1)},${status}\n`;
             });
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", `商品效期與庫存盤點表_${today.toISOString().split('T')[0]}.csv`);
+            link.setAttribute("download", `門市商品庫存與財務損益報表_${today.toISOString().split('T')[0]}.csv`);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
             link.click();
@@ -1557,6 +1606,7 @@
             const category = document.getElementById('item-category').value;
             const supplier = document.getElementById('item-supplier').value;
             const location = document.getElementById('item-location').value;
+            const cost = parseFloat(document.getElementById('item-cost').value) || 0;
             const price = parseFloat(document.getElementById('item-price').value) || 0;
             const discount = document.getElementById('item-discount').value;
             const quantity = parseInt(document.getElementById('item-quantity').value, 10);
@@ -1568,6 +1618,7 @@
                 category: category || "常溫商品",
                 supplier: supplier || "未指定",
                 location: location || "未指定",
+                cost: cost,
                 price: price,
                 discount: discount || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
@@ -1576,7 +1627,7 @@
 
             showToast(`➕ 成功新增「${name}」至庫存！`);
             const discountMsg = discount ? ` [標籤: ${discount}]` : '';
-            await logActivity("➕ 新增商品", name, `類別: ${category}, 廠商: ${supplier || '未指定'}, 貨架: ${location || '未指定'}, 單價: $${price}, 數量: ${isNaN(quantity) ? 1 : quantity}, 期限: ${expiry}${discountMsg}`);
+            await logActivity("➕ 新增商品", name, `類別: ${category}, 廠商: ${supplier || '未指定'}, 進價: $${cost}, 售價: $${price}, 數量: ${isNaN(quantity) ? 1 : quantity}, 期限: ${expiry}${discountMsg}`);
 
             if (barcode && !productDatabase[barcode]) {
                 await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
