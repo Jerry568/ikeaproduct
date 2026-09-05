@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (溫層與極致旗艦版)</title>
+    <title>超市商品效期管理系統 (貨架定位與旗艦版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -119,7 +119,7 @@
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                <!-- 大類分類選單 (包含常溫與冷凍) -->
+                <!-- 大類分類選單 -->
                 <select id="category-filter-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md py-2 px-3 text-sm focus:ring-blue-500">
                     <option value="ALL">🏷️ 所有類別</option>
                     <option value="常溫商品">🌡️ 常溫商品</option>
@@ -127,7 +127,7 @@
                     <option value="烘焙麵包">🥐 烘焙麵包</option>
                     <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                     <option value="零食餅乾">🍪 零食餅乾</option>
-                    <option value="熟食冷凍">🍱 熟食調理</option>
+                    <option value="熟食調理">🍱 熟食調理</option>
                     <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                     <option value="其他">📦 其他品項</option>
                 </select>
@@ -141,10 +141,10 @@
                     <option value="NAME_ASC">🔤 商品名稱</option>
                 </select>
 
-                <!-- 搜尋框與語音搜尋 -->
-                <div class="relative w-full sm:w-60 flex items-center">
+                <!-- 搜尋框與語音搜尋 (支援搜尋品名與貨架號) -->
+                <div class="relative w-full sm:w-64 flex items-center">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
-                    <input type="text" id="search-input" placeholder="搜尋商品名稱..." class="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:ring-blue-500 text-sm">
+                    <input type="text" id="search-input" placeholder="搜尋品名或貨架(如: A1)..." class="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:ring-blue-500 text-sm">
                     <button type="button" onclick="startVoiceSearch()" title="語音搜尋" class="absolute right-2 text-gray-400 hover:text-blue-500">
                         🎙️
                     </button>
@@ -152,7 +152,7 @@
             </div>
         </div>
 
-        <!-- 新增商品表單 -->
+        <!-- 新增商品表單 (包含貨架位置) -->
         <div id="add-item-card" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8 relative no-print transition-colors">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-200">新增盤點商品</h2>
@@ -190,7 +190,7 @@
             </div>
 
             <form id="add-item-form" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end relative">
-                <div class="md:col-span-4 relative">
+                <div class="md:col-span-3 relative">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">商品名稱 (打字聯想/掃碼/NFC)</label>
                     <input type="text" id="item-name" autocomplete="off" required placeholder="點選上方常用或輸入..." class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                     <input type="hidden" id="item-barcode" value="">
@@ -211,29 +211,33 @@
                     </select>
                 </div>
                 <div class="md:col-span-2">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架位置 / 儲位</label>
+                    <input type="text" id="item-location" placeholder="例: A1-02, 冷凍庫B" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
+                </div>
+                <div class="md:col-span-1">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">單價 ($)</label>
                     <input type="number" id="item-price" min="0" value="50" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
-                <div class="md:col-span-2">
+                <div class="md:col-span-1">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">促銷標籤</label>
                     <select id="item-discount" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
-                        <option value="">正價商品</option>
+                        <option value="">正價</option>
                         <option value="8折">🏷️ 8折</option>
                         <option value="7折">🏷️ 7折</option>
                         <option value="5折">🔥 5折</option>
-                        <option value="即期出清">⚡ 即期出清</option>
+                        <option value="即期出清">⚡ 出清</option>
                     </select>
                 </div>
                 <div class="md:col-span-1">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">數量</label>
                     <input type="number" id="item-quantity" required min="0" value="1" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
-                <div class="md:col-span-3">
+                <div class="md:col-span-2">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">有效期限 (Best Before)</label>
                     <input type="date" id="item-date" required class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
-                <div class="md:col-span-2">
-                    <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition font-medium text-sm">新增至庫存</button>
+                <div class="md:col-span-12 mt-2">
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2.5 rounded-md hover:bg-blue-700 transition font-medium text-sm">新增至庫存</button>
                 </div>
             </form>
         </div>
@@ -261,6 +265,7 @@
                             <input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)" class="rounded text-blue-600">
                         </th>
                         <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 類別與促銷</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">📍 貨架位置</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">單價</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">有效期限</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">剩餘天數</th>
@@ -402,7 +407,7 @@
                 recognition.lang = 'zh-TW';
                 recognition.start();
 
-                showToast("🎙️ 正在聆聽，請說出商品名稱...");
+                showToast("🎙️ 正在聆聽，請說出商品名稱或貨架號...");
 
                 recognition.onresult = function(event) {
                     const text = event.results[0][0].transcript;
@@ -543,7 +548,7 @@
                     expiryDate.setHours(0, 0, 0, 0);
                     const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
                     if (diffDays < 14) {
-                        alertItems.push({ name: item.name, expiry: item.expiry, days: diffDays, qty: qty });
+                        alertItems.push({ name: item.name, location: item.location || '未指定', expiry: item.expiry, days: diffDays, qty: qty });
                     }
                 }
             });
@@ -556,7 +561,7 @@
             let msg = `📢【門市即期與屆期商品每日通報】\n通報日期：${today.toLocaleDateString('zh-TW')}\n---------------\n`;
             alertItems.forEach((item, index) => {
                 const statusTag = item.days < 0 ? `⚫️ 已過期 (${Math.abs(item.days)}天)` : `🔴 剩 ${item.days} 天`;
-                msg += `${index + 1}. ${item.name}\n   - 數量：${item.qty} 件\n   - 期限：${item.expiry} [${statusTag}]\n`;
+                msg += `${index + 1}. ${item.name} (貨架: ${item.location})\n   - 數量：${item.qty} 件\n   - 期限：${item.expiry} [${statusTag}]\n`;
             });
             msg += `---------------\n請值班同仁優先排面調度或貼折扣標籤去化！`;
 
@@ -727,12 +732,15 @@
                     const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
                     if (cols.length >= 2) {
                         const name = cols[0];
-                        let discount = "", expiry = "", qty = 1, price = 50, category = "常溫商品";
+                        let discount = "", expiry = "", qty = 1, price = 50, category = "常溫商品", location = "未指定";
 
                         if (cols.length >= 5) {
-                            discount = (cols[1] === "正價" || !cols[1]) ? "" : cols[1];
-                            expiry = cols[2];
-                            qty = parseInt(cols[4], 10) || 1;
+                            category = cols[1] || "常溫商品";
+                            location = cols[2] || "未指定";
+                            price = parseFloat(cols[3]) || 50;
+                            discount = (cols[4] === "正價" || !cols[4]) ? "" : cols[4];
+                            expiry = cols[5];
+                            qty = parseInt(cols[6], 10) || 1;
                         } else {
                             expiry = cols[1];
                             if (cols[2]) qty = parseInt(cols[2], 10) || 1;
@@ -743,6 +751,7 @@
                                 name: name,
                                 barcode: "",
                                 category: category,
+                                location: location,
                                 price: price,
                                 discount: discount,
                                 quantity: qty,
@@ -973,12 +982,13 @@
 
             let filteredData = currentInventory.filter(item => {
                 const nameMatch = item.name.toLowerCase().includes(keyword);
+                const locationMatch = (item.location || '').toLowerCase().includes(keyword);
                 const categoryMatch = (categoryFilter === 'ALL' || (item.category || '常溫商品') === categoryFilter);
                 const { statusCategory } = calculateStatus(item.expiry, item.quantity);
                 const qty = parseInt(item.quantity) || 0;
                 const isLowStock = (qty > 0 && qty <= 2);
 
-                if (!nameMatch || !categoryMatch) return false;
+                if ((!nameMatch && !locationMatch) || !categoryMatch) return false;
 
                 if (currentStatusFilter === 'ALL') return true;
                 if (currentStatusFilter === 'LOW_STOCK') return isLowStock;
@@ -1008,7 +1018,7 @@
             document.getElementById('item-count-text').textContent = `顯示 ${filteredData.length} / 共 ${currentInventory.length} 項商品`;
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" class="px-6 py-8 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
                 return;
             }
             
@@ -1018,6 +1028,7 @@
                 const price = parseFloat(item.price) || 0;
                 const subtotal = qty * price;
                 const categoryText = item.category || '常溫商品';
+                const locationText = item.location || '未指定';
                 const isChecked = selectedItemIds.has(item.id);
 
                 let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
@@ -1049,6 +1060,11 @@
                         </div>
                         ${discountBadge}
                         ${lowStockBadge}
+                    </td>
+                    <td class="px-6 py-4 font-medium text-gray-700 dark:text-gray-300">
+                        <span class="inline-flex items-center gap-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 font-mono">
+                            📍 ${locationText}
+                        </span>
                     </td>
                     <td class="px-6 py-4 font-mono text-gray-700 dark:text-gray-300">$${price}</td>
                     <td class="px-6 py-4">${item.expiry}</td>
@@ -1283,16 +1299,17 @@
         };
 
         window.exportToCSV = function() {
-            let csvContent = "商品名稱,類別,單價,促銷標籤,有效期限,剩餘天數,剩餘數量,小計金額,狀態\n";
+            let csvContent = "商品名稱,類別,貨架位置,單價,促銷標籤,有效期限,剩餘天數,剩餘數量,小計金額,狀態\n";
             currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
                 const { diffDays, status } = calculateStatus(item.expiry, item.quantity);
                 const safeName = `"${item.name.replace(/"/g, '""')}"`;
                 const discountText = item.discount || "正價";
                 const categoryText = item.category || "常溫商品";
+                const locationText = item.location || "未指定";
                 const price = parseFloat(item.price) || 0;
                 const qty = parseInt(item.quantity) || 0;
                 const subtotal = price * qty;
-                csvContent += `${safeName},${categoryText},${price},${discountText},${item.expiry},${diffDays},${qty},${subtotal},${status}\n`;
+                csvContent += `${safeName},${categoryText},${locationText},${price},${discountText},${item.expiry},${diffDays},${qty},${subtotal},${status}\n`;
             });
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
@@ -1310,6 +1327,7 @@
             const name = document.getElementById('item-name').value;
             const barcode = document.getElementById('item-barcode').value;
             const category = document.getElementById('item-category').value;
+            const location = document.getElementById('item-location').value;
             const price = parseFloat(document.getElementById('item-price').value) || 0;
             const discount = document.getElementById('item-discount').value;
             const quantity = parseInt(document.getElementById('item-quantity').value, 10);
@@ -1319,6 +1337,7 @@
                 name: name,
                 barcode: barcode || "",
                 category: category || "常溫商品",
+                location: location || "未指定",
                 price: price,
                 discount: discount || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
@@ -1327,7 +1346,7 @@
 
             showToast(`➕ 成功新增「${name}」至庫存！`);
             const discountMsg = discount ? ` [標籤: ${discount}]` : '';
-            await logActivity("➕ 新增商品", name, `類別: ${category}, 單價: $${price}, 數量: ${isNaN(quantity) ? 1 : quantity}, 期限: ${expiry}${discountMsg}`);
+            await logActivity("➕ 新增商品", name, `類別: ${category}, 貨架: ${location || '未指定'}, 單價: $${price}, 數量: ${isNaN(quantity) ? 1 : quantity}, 期限: ${expiry}${discountMsg}`);
 
             if (barcode && !productDatabase[barcode]) {
                 await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
