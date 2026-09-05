@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統 (災難備份版)</title>
+    <title>超市商品效期與進銷存損益管理系統 (權限管控版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -42,6 +42,13 @@
                         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                         🔌 條碼槍監聽中
                     </span>
+                    <!-- 🔒 店員/店長權限切換按鈕 -->
+                    <button id="role-toggle-btn" onclick="toggleRole()" class="bg-slate-700 text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-slate-600 shadow-sm hover:bg-slate-800">
+                        🔒 店員模式 (點擊解鎖)
+                    </button>
+                    <button id="change-pin-btn" onclick="changeManagerPin()" class="hidden bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full text-[11px] font-bold transition hover:bg-gray-300">
+                        ⚙️ 改密碼
+                    </button>
                     <button onclick="toggleDarkMode()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition">
                         🌙 <span id="dark-mode-text">深色</span>
                     </button>
@@ -58,19 +65,19 @@
                 <button onclick="window.print()" class="bg-gray-700 text-white px-2.5 py-1.5 rounded hover:bg-gray-800 transition font-medium shadow-sm">
                     🖨️ 列印
                 </button>
+                <!-- 🔒 店長限定功能：匯入/匯出/備份/還原 -->
                 <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="importCSV(event)">
-                <button onclick="document.getElementById('csv-file-input').click()" class="bg-blue-600 text-white px-2.5 py-1.5 rounded hover:bg-blue-700 transition font-medium shadow-sm">
+                <button onclick="document.getElementById('csv-file-input').click()" class="manager-only hidden bg-blue-600 text-white px-2.5 py-1.5 rounded hover:bg-blue-700 transition font-medium shadow-sm">
                     📤 匯入
                 </button>
-                <button onclick="exportToCSV()" class="bg-green-600 text-white px-2.5 py-1.5 rounded hover:bg-green-700 transition font-medium shadow-sm">
+                <button onclick="exportToCSV()" class="manager-only hidden bg-green-600 text-white px-2.5 py-1.5 rounded hover:bg-green-700 transition font-medium shadow-sm">
                     📥 匯出
                 </button>
-                <!-- 💾 全系統 JSON 災難備份與還原按鈕 -->
-                <button onclick="backupToJSON()" class="bg-purple-600 text-white px-2.5 py-1.5 rounded hover:bg-purple-700 transition font-medium shadow-sm">
+                <button onclick="backupToJSON()" class="manager-only hidden bg-purple-600 text-white px-2.5 py-1.5 rounded hover:bg-purple-700 transition font-medium shadow-sm">
                     💾 備份 JSON
                 </button>
                 <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="restoreFromJSON(event)">
-                <button onclick="document.getElementById('json-file-input').click()" class="bg-amber-600 text-white px-2.5 py-1.5 rounded hover:bg-amber-700 transition font-medium shadow-sm">
+                <button onclick="document.getElementById('json-file-input').click()" class="manager-only hidden bg-amber-600 text-white px-2.5 py-1.5 rounded hover:bg-amber-700 transition font-medium shadow-sm">
                     🔄 還原 JSON
                 </button>
             </div>
@@ -105,24 +112,24 @@
                 <span id="stat-low-count" class="text-base font-bold text-purple-600 dark:text-purple-400 mt-0.5">0 項</span>
             </div>
 
-            <!-- 💰 財務損益區塊 -->
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-slate-500 flex flex-col justify-between">
+            <!-- 🔒 財務損益區塊 (店長限定) -->
+            <div class="manager-only hidden bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-slate-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">💵 總進貨成本</span>
                 <span id="stat-total-cost" class="text-base font-bold text-slate-700 dark:text-slate-300 mt-0.5">$0</span>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-indigo-500 flex flex-col justify-between">
+            <div class="manager-only hidden bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-indigo-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">🏷️ 預估銷售額</span>
                 <span id="stat-total-value" class="text-base font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">$0</span>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-emerald-500 flex flex-col justify-between">
+            <div class="manager-only hidden bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-emerald-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase">💰 預估總毛利</span>
                 <span id="stat-total-profit" class="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">$0</span>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-teal-500 flex flex-col justify-between">
+            <div class="manager-only hidden bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-teal-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase">📈 平均毛利率</span>
                 <span id="stat-margin-rate" class="text-base font-bold text-teal-600 dark:text-teal-400 mt-0.5">0%</span>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-rose-600 flex flex-col justify-between">
+            <div class="manager-only hidden bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-rose-600 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase">💸 報廢成本風險</span>
                 <span id="stat-risk-cost" class="text-base font-bold text-rose-700 dark:text-rose-400 mt-0.5">$0</span>
             </div>
@@ -132,7 +139,7 @@
         <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm mb-4 no-print transition-colors border dark:border-gray-700">
             <div class="flex justify-between items-center cursor-pointer" onclick="toggleChartPanel()">
                 <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1">
-                    📈 庫存健康度與損益圖表分析
+                    📈 庫存健康度圖表分析
                 </h3>
                 <span id="chart-toggle-btn" class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
                     展開圖表 ▼
@@ -211,7 +218,8 @@
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架</label>
                         <input type="text" id="item-location" placeholder="A1-02" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
-                    <div class="md:col-span-1">
+                    <!-- 🔒 進價 (成本) 欄位，店長限定 -->
+                    <div class="md:col-span-1 manager-only hidden">
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">進價 ($)</label>
                         <input type="number" id="item-cost" min="0" value="35" placeholder="成本" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
@@ -274,7 +282,7 @@
                 <!-- 排序選單 -->
                 <select id="sort-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded py-1.5 px-2 focus:ring-blue-500">
                     <option value="EXPIRY_ASC">⏳ 效期最近</option>
-                    <option value="PROFIT_DESC">💰 毛利高到低</option>
+                    <option value="PROFIT_DESC" class="manager-only hidden">💰 毛利高到低</option>
                     <option value="QTY_ASC">📉 數量少到多</option>
                     <option value="QTY_DESC">📈 數量多到少</option>
                     <option value="PRICE_DESC">💰 售價高到低</option>
@@ -318,8 +326,8 @@
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 類別</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">🚚 廠商</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">📍 貨架</th>
-                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">進價 / 售價</th>
-                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">預估毛利</th>
+                            <th id="th-price" class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">單價 / 售價</th>
+                            <th id="th-profit" class="manager-only hidden px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">預估毛利</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">有效期限</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">剩餘天數</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200 text-center">數量</th>
@@ -399,7 +407,7 @@
         <button onclick="batchSetDiscount('5折')" class="bg-orange-600 hover:bg-orange-700 text-white px-2.5 py-1 rounded-full font-medium transition">🔥 5折</button>
         <button onclick="batchSetDiscount('7折')" class="bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-full font-medium transition">🏷️ 7折</button>
         <button onclick="batchSetSoldOut()" class="bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-full font-medium transition">⚪️ 售完</button>
-        <button onclick="batchDelete()" class="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-full font-medium transition">❌ 刪除</button>
+        <button onclick="batchDelete()" class="manager-only hidden bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-full font-medium transition">❌ 刪除</button>
     </div>
 
     <!-- 🏷️ 條碼標籤產生器彈窗 -->
@@ -445,6 +453,10 @@
         let html5QrCode = null;
         let chartInstance = null;
 
+        // 🔒 權限與 PIN 碼管理 (預設 PIN: 1234)
+        let currentRole = 'clerk'; // 'clerk' 或 'manager'
+        let managerPin = localStorage.getItem('manager_pin') || '1234';
+
         const defaultProducts = {
             "7315122013870": "榛果牛奶巧克力片 100g",
             "7315122013122": "牛奶巧克力片 100g",
@@ -459,8 +471,68 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 💾 1. 全系統 JSON 備份導出
+        // 🔒 1. 角色切換與 PIN 碼驗證
+        window.toggleRole = function() {
+            if (currentRole === 'clerk') {
+                const inputPin = prompt("🔑 請輸入店長解鎖 PIN 碼 (預設為 1234)：");
+                if (inputPin === null) return;
+
+                if (inputPin === managerPin) {
+                    currentRole = 'manager';
+                    showToast("🔓 已解鎖切換至「店長權限模式」");
+                    updateRoleUI();
+                } else {
+                    alert("❌ PIN 碼錯誤！無法解鎖店長權限。");
+                }
+            } else {
+                currentRole = 'clerk';
+                showToast("🔒 已切回「店員巡查模式」");
+                updateRoleUI();
+            }
+        };
+
+        // ⚙️ 2. 修改店長 PIN 碼
+        window.changeManagerPin = function() {
+            if (currentRole !== 'manager') return;
+            const newPin = prompt("⚙️ 請輸入新的 4 位數店長 PIN 碼：");
+            if (newPin && newPin.trim().length >= 4) {
+                managerPin = newPin.trim();
+                localStorage.setItem('manager_pin', managerPin);
+                showToast("✅ 店長 PIN 碼已更新成功！");
+            } else if (newPin !== null) {
+                alert("⚠️ PIN 碼長度至少需為 4 位數。");
+            }
+        };
+
+        // 🔄 3. 更新 UI 權限隱顯狀態
+        function updateRoleUI() {
+            const btn = document.getElementById('role-toggle-btn');
+            const changePinBtn = document.getElementById('change-pin-btn');
+            const managerElements = document.querySelectorAll('.manager-only');
+            const thPrice = document.getElementById('th-price');
+
+            if (currentRole === 'manager') {
+                btn.textContent = "🔓 店長權限 (點擊上鎖)";
+                btn.className = "bg-amber-600 text-white px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-amber-500 shadow-sm hover:bg-amber-700";
+                changePinBtn.classList.remove('hidden');
+                
+                managerElements.forEach(el => el.classList.remove('hidden'));
+                if (thPrice) thPrice.textContent = "進價 / 售價";
+            } else {
+                btn.textContent = "🔒 店員模式 (點擊解鎖)";
+                btn.className = "bg-slate-700 text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-slate-600 shadow-sm hover:bg-slate-800";
+                changePinBtn.classList.add('hidden');
+
+                managerElements.forEach(el => el.classList.add('hidden'));
+                if (thPrice) thPrice.textContent = "單價 / 售價";
+            }
+
+            renderTable();
+        }
+
+        // 💾 全系統 JSON 備份導出
         window.backupToJSON = function() {
+            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
             const backupData = {
                 version: "3.0_PRO",
                 backupTime: new Date().toISOString(),
@@ -484,8 +556,9 @@
             showToast("💾 全系統 JSON 災難備份檔匯出成功！");
         };
 
-        // 🔄 2. 全系統 JSON 災難還原
+        // 🔄 全系統 JSON 災難還原
         window.restoreFromJSON = function(e) {
+            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
             const file = e.target.files[0];
             if (!file) return;
 
@@ -516,7 +589,7 @@
                     if (Array.isArray(backupData.inventory)) {
                         for (const item of backupData.inventory) {
                             const newItem = { ...item };
-                            delete newItem.id; // 移除舊 Doc ID，產生新 ID
+                            delete newItem.id;
                             await firestoreMethods.addDoc(inventoryCol, newItem);
                             restoredInv++;
                         }
@@ -817,6 +890,7 @@
         };
 
         window.batchDelete = async function() {
+            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
             if (!db) return;
             if (confirm(`確定要刪除選取的那 ${selectedItemIds.size} 項商品嗎？`)) {
                 for (const id of selectedItemIds) {
@@ -1046,6 +1120,7 @@
         }
 
         window.importCSV = function(e) {
+            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
             const file = e.target.files[0];
             if (!file) return;
 
@@ -1400,6 +1475,21 @@
 
                 let profitBadgeClass = unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold animate-pulse";
 
+                // 權限動態欄位
+                let priceColHTML = currentRole === 'manager' 
+                    ? `<span class="text-gray-400 text-[10px]">$${cost} /</span> <span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>` 
+                    : `<span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>`;
+
+                let profitColHTML = currentRole === 'manager'
+                    ? `<td class="manager-only px-4 py-2 font-mono ${profitBadgeClass}">
+                        ${unitProfit >= 0 ? '+' : ''}$${Math.round(unitProfit)} <span class="text-[9px] text-gray-400 font-normal">(共$${Math.round(totalProfit)})</span>
+                       </td>`
+                    : '';
+
+                let deleteBtnHTML = currentRole === 'manager'
+                    ? `<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-1.5 py-0.5 rounded border border-red-200 text-[10px]">刪除</button>`
+                    : '';
+
                 const tr = document.createElement('tr');
                 tr.className = `hover:bg-opacity-80 transition ${rowClass}`;
                 tr.innerHTML = `
@@ -1423,12 +1513,9 @@
                         </span>
                     </td>
                     <td class="px-4 py-2 font-mono text-gray-700 dark:text-gray-300">
-                        <span class="text-gray-400 text-[10px]">$${cost} /</span> 
-                        <span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>
+                        ${priceColHTML}
                     </td>
-                    <td class="px-4 py-2 font-mono ${profitBadgeClass}">
-                        ${unitProfit >= 0 ? '+' : ''}$${Math.round(unitProfit)} <span class="text-[9px] text-gray-400 font-normal">(共$${Math.round(totalProfit)})</span>
-                    </td>
+                    ${profitColHTML}
                     <td class="px-4 py-2 text-[11px]">${item.expiry}</td>
                     <td class="px-4 py-2 font-bold">${qty === 0 ? '-' : (diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays + ' 天')}</td>
                     <td class="px-4 py-2 text-center">
@@ -1444,7 +1531,7 @@
                         <div class="flex justify-center gap-1">
                             <button onclick="openBarcodeModal('${item.name.replace(/'/g, "\\'")}', '${item.barcode || ''}', ${price}, '${item.expiry}')" class="text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[10px]">🏷️標籤</button>
                             ${qty > 0 ? `<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 hover:text-gray-900 font-medium bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 text-[10px]">售完</button>` : ''}
-                            <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-1.5 py-0.5 rounded border border-red-200 text-[10px]">刪除</button>
+                            ${deleteBtnHTML}
                         </div>
                     </td>
                 `;
@@ -1654,6 +1741,7 @@
         };
 
         window.deleteItem = async function(id, name) {
+            if (currentRole !== 'manager') return alert("🔒 刪除品項需要店長權限！");
             if (!db) return alert("連線異常，無法刪除資料");
             if (confirm(`確定要從庫存中刪除「${name}」嗎？`)) {
                 await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
@@ -1663,6 +1751,7 @@
         };
 
         window.exportToCSV = function() {
+            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
             let csvContent = "商品名稱,類別,供應商,貨架位置,進價(成本),售價,單位預估毛利,促銷標籤,有效期限,剩餘天數,剩餘數量,預估銷售額,狀態\n";
             currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
                 const { diffDays, status } = calculateStatus(item.expiry, item.quantity);
