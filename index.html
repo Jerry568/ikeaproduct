@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統 (PWA 離線旗艦版)</title>
+    <title>超市商品效期與進銷存損益管理系統 (AI OCR 旗艦版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,10 +16,11 @@
             darkMode: 'class',
         }
     </script>
-    <!-- 引入條碼掃描、Chart.js 視覺化圖表與 JsBarcode 條碼生成庫 -->
+    <!-- 引入條碼掃描、Chart.js、JsBarcode 與 Tesseract.js AI OCR 庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         @media print {
@@ -248,7 +249,14 @@
                         <input type="number" id="item-quantity" required min="0" value="1" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">有效期限</label>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300">有效期限</label>
+                            <!-- 📸 AI OCR 辨識按鈕 -->
+                            <button type="button" onclick="document.getElementById('ocr-file-input').click()" class="text-[10px] bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded font-bold hover:bg-purple-200 transition flex items-center gap-0.5 shadow-sm">
+                                📸 AI 辨識
+                            </button>
+                            <input type="file" id="ocr-file-input" accept="image/*" capture="environment" class="hidden" onchange="processAiOcr(event)">
+                        </div>
                         <input type="date" id="item-date" required class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-9 mt-1">
@@ -436,19 +444,6 @@
         <span id="toast-message">操作成功</span>
     </div>
 
-    <!-- 註冊 Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(reg => {
-                    console.log('📦 Service Worker 註冊成功, 支援 PWA 離線快取:', reg.scope);
-                }).catch(err => {
-                    console.log('Service Worker 註冊失敗:', err);
-                });
-            });
-        }
-    </script>
-
     <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
         const today = new Date();
@@ -505,6 +500,50 @@
         }
         window.addEventListener('online', updateNetworkStatus);
         window.addEventListener('offline', updateNetworkStatus);
+
+        // 📸 AI 效期 OCR 辨識處理函數
+        window.processAiOcr = async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showToast("🤖 AI 正在辨識包裝印字，請稍候...");
+
+            try {
+                const worker = await Tesseract.createWorker('eng');
+                const ret = await worker.recognize(file);
+                await worker.terminate();
+
+                const text = ret.data.text;
+                console.log("OCR 辨識原始文字：", text);
+
+                let foundDate = null;
+                const matchFull = text.match(/20\d{2}[-/.年\s]*[0-1]?\d[-/.月\s]*[0-3]?\d/);
+                if (matchFull) {
+                    let cleanStr = matchFull[0].replace(/[年月\s]/g, '-').replace(/[.]/g, '-').replace(/[\/]/g, '-');
+                    let parts = cleanStr.split('-').filter(Boolean);
+                    if (parts.length === 3) {
+                        let y = parts[0];
+                        let m = parts[1].padStart(2, '0');
+                        let d = parts[2].padStart(2, '0');
+                        foundDate = `${y}-${m}-${d}`;
+                    }
+                }
+
+                if (foundDate && !isNaN(new Date(foundDate).getTime())) {
+                    document.getElementById('item-date').value = foundDate;
+                    showToast(`✅ AI 成功辨識並帶入效期：${foundDate}`);
+                    speakText(`辨識成功，效期 ${foundDate}`);
+                } else {
+                    alert(`⚠️ 未能自動精準解析日期格式。\n\nAI 辨識到的文字：\n"${text.trim() || '無文字'}"\n\n請手動確認或重新拍攝清晰的印字照片！`);
+                }
+
+            } catch (err) {
+                console.error("OCR 錯誤：", err);
+                alert("❌ AI 辨識失敗：" + err.message);
+            } finally {
+                e.target.value = '';
+            }
+        };
 
         // 🔔 推播預警相關
         window.requestNotificationPermission = async function() {
@@ -604,7 +643,7 @@
 
         window.backupToJSON = function() {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const backupData = { version: "4.0_PWA", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
+            const backupData = { version: "5.0_AI_OCR", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
             const jsonStr = JSON.stringify(backupData, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
             const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存全系統備份_${today.toISOString().split('T')[0]}.json`;
@@ -698,8 +737,7 @@
             let csvContent = "﻿商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,預估進價,預估總進價成本\n";
             lowStockItems.forEach(item => {
                 const qty = parseInt(item.quantity) || 0; const cost = parseFloat(item.cost) || 0; const suggestedQty = Math.max(10 - qty, 5);
-                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫商品"},${item.supplier||"通用廠商"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}
-`;
+                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫商品"},${item.supplier||"通用廠商"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}\n`;
             });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市補貨採購建議表_${today.toISOString().split('T')[0]}.csv`;
@@ -861,7 +899,7 @@
         function renderQuickButtons() {
             const grid = document.getElementById('quick-buttons-grid'); grid.innerHTML = '';
             Object.entries(productDatabase).forEach(([b, n]) => {
-                const btn = document.createElement('button'); btn.type = "button"; btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium shadow-sm"; btn.textContent = n;
+                const btn = document.createElement('button'); btn.type = "button"; btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium transition shadow-sm"; btn.textContent = n;
                 btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; }; grid.appendChild(btn);
             });
         }
@@ -964,7 +1002,7 @@
                         <td class="px-4 py-2 font-bold text-indigo-700">$${Math.round(q*ep).toLocaleString('zh-TW')}</td>
                         <td class="px-4 py-2">${(q===0)?'⚪️':diffDays<0?'⚫️':diffDays<14?'🔴':diffDays<30?'🟡':'🟢'} ${status}</td>
                         <td class="px-4 py-2 text-center no-print flex gap-1">
-                            <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
+                            <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
                             ${q>0?`<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
                             ${currentRole==='manager'?`<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
                         </td>
@@ -1013,7 +1051,6 @@
             const firebaseConfig = { apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI", authDomain: "market-inventory-ef68c.firebaseapp.com", projectId: "market-inventory-ef68c", storageBucket: "market-inventory-ef68c.firebasestorage.app", messagingSenderId: "307248314866", appId: "1:307248314866:web:97f3edb8e9e47a22ed536b" };
             const app = firebaseApp.initializeApp(firebaseConfig);
             
-            // 🔥 啟用 Firestore PWA 離線持久化快取 (Offline Persistence)
             db = firestore.initializeFirestore(app, {
                 localCache: firestore.persistentLocalCache()
             });
@@ -1035,7 +1072,6 @@
                 updateDashboardStats();
                 if (currentView === 'list') renderTable(); else if (currentView === 'calendar') renderCalendar();
                 
-                // 若是由本機快取觸發，且在離線狀態，不覆蓋離線 UI 狀態
                 if (navigator.onLine) {
                     document.getElementById('sync-status').textContent = snapshot.metadata.hasPendingWrites ? '🔄 同步中...' : '✅ 已連線 (同步中)';
                     document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold shadow-sm';
@@ -1046,7 +1082,6 @@
 
         window.updateQuantity = async function(id, name, currentQty, delta) {
             let newQty = currentQty + delta; if (newQty < 0) newQty = 0;
-            // 直接操作，離線時 Firestore 會存入 IndexedDB 等待連線後上傳
             await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: newQty });
             if (newQty === 0) { showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, "清零"); } 
             else { showToast(`🔄 ${name} 數量調整為 ${newQty}`); await logActivity("🔄 數量調整", name, `變更為 ${newQty}`); }
