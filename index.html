@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與供應鏈管理系統 (緊湊分頁版)</title>
+    <title>超市商品效期與供應鏈管理系統 (條碼槍極致版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,10 +33,15 @@
     <div class="max-w-7xl mx-auto">
         <!-- 頂部標題與狀態 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-3 no-print">
-            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
-                <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">📦 效期與供應鏈系統</h1>
-                <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start flex-wrap">
+                <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">📦 效期與庫存系統</h1>
+                <div class="flex items-center gap-1.5 flex-wrap">
                     <span id="sync-status" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2 py-1 rounded-full font-bold">連線中...</span>
+                    <!-- 🔌 實體條碼槍狀態燈 -->
+                    <span class="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 border border-emerald-300 dark:border-emerald-700">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        🔌 條碼槍監聽中
+                    </span>
                     <button onclick="toggleDarkMode()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition">
                         🌙 <span id="dark-mode-text">深色</span>
                     </button>
@@ -105,7 +110,7 @@
             </div>
         </div>
 
-        <!-- 📈 Chart.js 動態視覺化統計圖表面板 (預設收合以節省空間) -->
+        <!-- 📈 Chart.js 動態視覺化統計圖表面板 -->
         <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm mb-4 no-print transition-colors border dark:border-gray-700">
             <div class="flex justify-between items-center cursor-pointer" onclick="toggleChartPanel()">
                 <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1">
@@ -120,7 +125,7 @@
             </div>
         </div>
 
-        <!-- 🙈 可折疊「新增商品表單卡片」 (預設收合) -->
+        <!-- 🙈 可折疊「新增商品表單卡片」 -->
         <div id="add-item-card" class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm mb-4 border dark:border-gray-700 no-print transition-colors">
             <div class="flex justify-between items-center cursor-pointer" onclick="toggleAddForm()">
                 <div class="flex items-center gap-2">
@@ -176,7 +181,7 @@
                             <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                             <option value="烘焙麵包">🥐 烘焙麵包</option>
                             <option value="熟食調理">🍱 熟食調理</option>
-                            <option value="罐頭乾貨">罐 罐頭乾貨</option>
+                            <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                             <option value="其他">📦 其他</option>
                         </select>
                     </div>
@@ -305,7 +310,7 @@
                 </table>
             </div>
 
-            <!-- 📄 分頁控制區塊 (Pagination Controls) -->
+            <!-- 📄 分頁控制區塊 -->
             <div class="p-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center text-xs no-print">
                 <div class="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
                     <span>每頁：</span>
@@ -373,7 +378,7 @@
         <button onclick="batchDelete()" class="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-full font-medium transition">❌ 刪除</button>
     </div>
 
-    <!-- 🏷️ 條碼標籤產生器彈窗 (Barcode Label Modal) -->
+    <!-- 🏷️ 條碼標籤產生器彈窗 -->
     <div id="barcode-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 no-print p-4">
         <div class="bg-white p-5 rounded-lg shadow-2xl max-w-sm w-full text-center border">
             <h3 id="modal-item-name" class="font-bold text-base text-gray-800 mb-1">商品名稱</h3>
@@ -408,7 +413,6 @@
         let currentView = 'list'; 
         let currentStatusFilter = 'ALL'; 
         
-        // 📄 分頁狀態
         let currentPage = 1;
         let pageSize = 10;
 
@@ -431,7 +435,74 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // ⬆️ 滾動監控：控制「快速置頂」按鈕顯隱
+        // 🔌 實體條碼槍自動監聽邏輯 (Global Hardware Barcode Gun Listener)
+        let barcodeGunBuffer = "";
+        let lastKeyTime = 0;
+
+        document.addEventListener('keydown', async function(e) {
+            const currentTime = Date.now();
+            const timeDiff = currentTime - lastKeyTime;
+            lastKeyTime = currentTime;
+
+            // 如果兩字元輸入時間間隔 > 100ms，代表為人類手動打字，清空緩衝區
+            if (timeDiff > 100) {
+                barcodeGunBuffer = "";
+            }
+
+            // 忽視修飾鍵
+            if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+                return;
+            }
+
+            // 條碼槍掃描結束通常會觸發 Enter 鍵
+            if (e.key === 'Enter') {
+                if (barcodeGunBuffer.length >= 3) {
+                    const scannedBarcode = barcodeGunBuffer.trim();
+                    barcodeGunBuffer = "";
+                    
+                    // 如果輸入框正被聚焦，阻止表單預設提交行為
+                    if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+                        e.preventDefault();
+                    }
+                    
+                    await handleBarcodeGunScan(scannedBarcode);
+                }
+                barcodeGunBuffer = "";
+                return;
+            }
+
+            // 只收集可列印字元
+            if (e.key.length === 1) {
+                barcodeGunBuffer += e.key;
+            }
+        });
+
+        // 🔌 處理條碼槍掃描結果
+        async function handleBarcodeGunScan(barcode) {
+            const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
+            const existingItem = currentInventory.find(item => item.barcode === barcode || item.name === matchedName);
+
+            if (existingItem) {
+                // 已存在商品：自動數量 +1
+                await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
+                speakText(`條碼槍：${matchedName}，數量加一`);
+                showToast(`🔌 [條碼槍] ${matchedName} 數量 +1 (現有: ${existingItem.quantity + 1})`);
+            } else {
+                // 新品項：自動帶入表單並展開
+                document.getElementById('item-barcode').value = barcode;
+                document.getElementById('item-name').value = matchedName;
+                
+                const formContent = document.getElementById('add-form-content');
+                if (formContent.classList.contains('hidden')) {
+                    toggleAddForm();
+                }
+                
+                speakText(`條碼槍掃描新品：${matchedName}`);
+                showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
+                document.getElementById('item-quantity').focus();
+            }
+        }
+
         window.onscroll = function() {
             const btn = document.getElementById('back-to-top');
             if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
@@ -441,7 +512,6 @@
             }
         };
 
-        // 🙈 開關新增商品卡片
         window.toggleAddForm = function() {
             const content = document.getElementById('add-form-content');
             const text = document.getElementById('add-form-toggle-text');
@@ -468,7 +538,6 @@
             }
         }
 
-        // 📄 分頁控制邏輯
         window.changePageSize = function(size) {
             pageSize = parseInt(size, 10);
             currentPage = 1;
@@ -1173,7 +1242,6 @@
                 return;
             }
 
-            // 📄 分頁裁切 (Slice per page)
             const pagedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
             
             pagedData.forEach(item => {
@@ -1516,7 +1584,6 @@
             
             this.reset();
             document.getElementById('item-barcode').value = '';
-            // 新增完成後自動收合表單，確保畫面乾淨
             toggleAddForm();
         });
     </script>
