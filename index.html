@@ -15,7 +15,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期管理系統</h1>
-                <span id="sync-status" class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse">雲端同步中...</span>
+                <span id="sync-status" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
             </div>
             <div class="flex items-center gap-4">
                 <div class="text-gray-500">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
@@ -25,6 +25,7 @@
             </div>
         </div>
 
+        <!-- 新增商品表單 -->
         <div class="bg-white p-6 rounded-lg shadow-md mb-8">
             <h2 class="text-xl font-semibold mb-4 text-gray-700">新增盤點商品</h2>
             <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end">
@@ -44,6 +45,7 @@
             </form>
         </div>
 
+        <!-- 效期資料表 -->
         <div class="bg-white rounded-lg shadow-md overflow-x-auto">
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
@@ -57,37 +59,21 @@
                     </tr>
                 </thead>
                 <tbody id="inventory-list" class="divide-y divide-gray-200">
-                    </tbody>
+                    <!-- 資料將透過 Firestore 動態載入 -->
+                </tbody>
             </table>
         </div>
     </div>
 
+    <!-- 引入 Firebase 模組 (改為動態安全載入架構) -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-
-        // 寫入你專屬的 Firebase 設定
-        const firebaseConfig = {
-            apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI",
-            authDomain: "market-inventory-ef68c.firebaseapp.com",
-            projectId: "market-inventory-ef68c",
-            storageBucket: "market-inventory-ef68c.firebasestorage.app",
-            messagingSenderId: "307248314866",
-            appId: "1:307248314866:web:97f3edb8e9e47a22ed536b",
-            measurementId: "G-TSC3T2W3MD"
-        };
-
-        // 初始化 Firebase 與資料庫
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const inventoryCol = collection(db, "inventory");
-
-        // 介面日期設定
+        // 1. 先將畫面基礎功能載入（就算 Firebase 當機，日期與畫面仍會正常顯示）
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
 
         let currentInventory = [];
+        let db, inventoryCol, firestoreMethods;
 
         // 狀態計算邏輯
         function calculateStatus(expiryDateStr) {
@@ -96,25 +82,20 @@
             const diffTime = expiryDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             
-            let status = '';
-            let rowClass = '';
+            let status = '', rowClass = '';
             if (diffDays < 0) {
-                status = '已過期';
-                rowClass = 'bg-gray-200 text-gray-500';
+                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500';
             } else if (diffDays < 14) {
-                status = '屆期 (<14天)';
-                rowClass = 'bg-red-50 text-red-900';
+                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900';
             } else if (diffDays < 30) {
-                status = '警告 (<30天)';
-                rowClass = 'bg-yellow-50 text-yellow-900';
+                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900';
             } else {
-                status = '安全';
-                rowClass = 'bg-green-50 text-green-900';
+                status = '安全'; rowClass = 'bg-green-50 text-green-900';
             }
             return { diffDays, status, rowClass };
         }
 
-        // 渲染表格
+        // 渲染表格邏輯
         function renderTable(data) {
             const tbody = document.getElementById('inventory-list');
             tbody.innerHTML = '';
@@ -147,14 +128,98 @@
             });
         }
 
-        // 即時監聽 Firestore 資料庫變化
-        onSnapshot(inventoryCol, (snapshot) => {
-            currentInventory = [];
-            snapshot.forEach((doc) => {
-                currentInventory.push({ id: doc.id, ...doc.data() });
-            });
-            renderTable(currentInventory);
-        });
+        // 2. 嘗試動態連線至 Firebase
+        try {
+            document.getElementById('sync-status').textContent = '連線中...';
+            document.getElementById('sync-status').className = 'bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse';
 
-        // 綁定全域函式給 HTML 的 onclick 使用
+            const firebaseApp = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js");
+            const firestore = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
+            firestoreMethods = firestore;
+
+            const firebaseConfig = {
+                apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI",
+                authDomain: "market-inventory-ef68c.firebaseapp.com",
+                projectId: "market-inventory-ef68c",
+                storageBucket: "market-inventory-ef68c.firebasestorage.app",
+                messagingSenderId: "307248314866",
+                appId: "1:307248314866:web:97f3edb8e9e47a22ed536b",
+                measurementId: "G-TSC3T2W3MD"
+            };
+
+            const app = firebaseApp.initializeApp(firebaseConfig);
+            db = firestore.getFirestore(app);
+            inventoryCol = firestore.collection(db, "inventory");
+
+            // 監聽 Firestore 即時變化
+            firestore.onSnapshot(inventoryCol, (snapshot) => {
+                currentInventory = [];
+                snapshot.forEach((docSnap) => {
+                    currentInventory.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                renderTable(currentInventory);
+                
+                document.getElementById('sync-status').textContent = '✅ 已連線';
+                document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold';
+            }, (error) => {
+                console.error("Firestore 權限錯誤: ", error);
+                document.getElementById('sync-status').textContent = '⚠️ 權限錯誤';
+                document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
+                alert("連接資料庫被拒絕！\n\n這通常是因為資料庫的「安全規則 (Rules)」設定未開放。請至 Firebase 控制台 -> Firestore Database -> Rules，將規則改為:\nallow read, write: if true;");
+            });
+
+        } catch (e) {
+            console.error("Firebase 載入崩潰: ", e);
+            document.getElementById('sync-status').textContent = '❌ 載入失敗';
+            document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
+            alert("網頁無法載入資料庫，請檢查以下兩點：\n1. 您的瀏覽器是否裝有「擋廣告套件」阻擋了 Google 連線。\n2. 您的網路連線是否正常。\n\n詳細錯誤訊息：" + e.message);
+        }
+
+        // 綁定按鈕動作
         window.updateQuantity = async function(id, currentQty, delta) {
+            if (!db) return alert("連線異常，無法更新資料");
+            let newQty = currentQty + delta;
+            if (newQty < 0) newQty = 0;
+            const itemRef = firestoreMethods.doc(db, "inventory", id);
+            await firestoreMethods.updateDoc(itemRef, { quantity: newQty });
+        };
+
+        window.deleteItem = async function(id) {
+            if (!db) return alert("連線異常，無法刪除資料");
+            await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+        };
+
+        window.exportToCSV = function() {
+            let csvContent = "商品名稱,有效期限,剩餘天數,剩餘數量,狀態\n";
+            currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
+                const { diffDays, status } = calculateStatus(item.expiry);
+                const safeName = `"${item.name.replace(/"/g, '""')}"`;
+                csvContent += `${safeName},${item.expiry},${diffDays},${item.quantity},${status}\n`;
+            });
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `商品效期與庫存盤點表_${today.toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        document.getElementById('add-item-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (!db) return alert("連線異常，無法新增資料");
+            const name = document.getElementById('item-name').value;
+            const quantity = parseInt(document.getElementById('item-quantity').value, 10);
+            const expiry = document.getElementById('item-date').value;
+            
+            await firestoreMethods.addDoc(inventoryCol, {
+                name: name,
+                quantity: quantity || 1,
+                expiry: expiry
+            });
+            this.reset();
+        });
+    </script>
+</body>
+</html>
