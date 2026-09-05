@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (企業數據分析版)</title>
+    <title>超市商品效期管理系統 (連續盤點與智慧推薦版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入條碼掃描與 Chart.js 視覺化圖表庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
@@ -90,7 +90,7 @@
             </div>
         </div>
 
-        <!-- 視圖切換與搜尋列 -->
+        <!-- 視圖切換與搜尋/排序列 -->
         <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between no-print">
             <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto overflow-x-auto">
                 <button id="btn-view-list" onclick="switchView('list')" class="px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap">📋 庫存清單</button>
@@ -98,9 +98,20 @@
                 <button id="btn-view-logs" onclick="switchView('logs')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap">📜 異動日誌</button>
             </div>
 
-            <div class="w-full md:w-80 relative" id="search-box-container">
-                <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
-                <input type="text" id="search-input" placeholder="快速搜尋庫存清單..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
+            <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto" id="search-box-container">
+                <!-- 排序選單 -->
+                <select id="sort-select" onchange="renderTable()" class="border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white">
+                    <option value="EXPIRY_ASC">⏳ 排序：效期最近優先</option>
+                    <option value="QTY_ASC">📉 排序：數量少到多</option>
+                    <option value="QTY_DESC">📈 排序：數量多到少</option>
+                    <option value="NAME_ASC">🔤 排序：商品名稱</option>
+                </select>
+
+                <!-- 搜尋框 -->
+                <div class="relative w-full sm:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
+                    <input type="text" id="search-input" placeholder="快速搜尋庫存清單..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
             </div>
         </div>
 
@@ -123,9 +134,15 @@
                 </div>
             </div>
 
-            <!-- 相機即時預畫面框 -->
+            <!-- 相機即時預畫面框 (含連續盤點模式) -->
             <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center shadow-inner">
-                <p class="text-xs text-gray-500 mb-2">請將商品的條碼對準下方掃描框</p>
+                <div class="flex justify-between items-center mb-2">
+                    <p class="text-xs text-gray-500">請將商品的條碼對準下方掃描框</p>
+                    <label class="flex items-center gap-1 text-xs font-bold text-indigo-700 cursor-pointer">
+                        <input type="checkbox" id="continuous-scan-toggle" class="rounded text-indigo-600">
+                        ⚡ 連續盤點模式 (掃描不關閉)
+                    </label>
+                </div>
                 <div id="reader" class="w-full rounded overflow-hidden border"></div>
                 <button type="button" onclick="stopScanner()" class="mt-3 bg-red-500 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-red-600 transition">關閉相機</button>
             </div>
@@ -180,7 +197,7 @@
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
                     <tr>
-                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 促銷標籤</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 促銷與建議標籤</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">有效期限</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">剩餘天數</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 text-center">剩餘數量</th>
@@ -236,6 +253,11 @@
         </div>
     </div>
 
+    <!-- 🔔 操作提示 Toast 氣泡 -->
+    <div id="toast-banner" class="fixed bottom-6 right-6 hidden bg-gray-800 text-white px-5 py-3 rounded-lg shadow-xl z-50 text-sm font-medium flex items-center gap-3 transition">
+        <span id="toast-message">操作成功</span>
+    </div>
+
     <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
         const today = new Date();
@@ -267,6 +289,15 @@
             "S1696203": "WASA 香草起司夾心餅乾 30g",
             "471000001": "鮮乳 (全脂)"
         };
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-banner');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
 
         async function logActivity(type, itemName, detail) {
             if (!db) return;
@@ -388,11 +419,9 @@
             document.getElementById('stat-low-count').textContent = `${lowCount} 項`;
             document.getElementById('stat-soldout-count').textContent = `${soldOutCount} 項`;
 
-            // 更新 Chart.js 圖表
             updateChart(redCount, yellowCount, greenCount, expiredCount, soldOutCount);
         }
 
-        // 📤 批次 CSV 檔案匯入解析器
         window.importCSV = function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -433,7 +462,7 @@
                         }
                     }
                 }
-                alert(`✅ 成功批次匯入 ${addedCount} 筆商品資料！`);
+                showToast(`✅ 成功批次匯入 ${addedCount} 筆商品資料！`);
                 await logActivity("📤 批次匯入", "CSV檔案匯入", `一次性成功寫入 ${addedCount} 筆商品資料`);
                 e.target.value = '';
             };
@@ -457,6 +486,7 @@
             }
         }
 
+        // 📷 開啟/關閉相機掃描條碼 (含連續盤點邏輯)
         window.toggleScanner = async function() {
             const container = document.getElementById('scanner-container');
             if (!container.classList.contains('hidden')) {
@@ -472,20 +502,40 @@
                     html5QrCode = new Html5Qrcode("reader");
                 }
 
+                let lastScannedCode = '';
+                let lastScannedTime = 0;
+
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     { fps: 15, qrbox: { width: 260, height: 140 }, aspectRatio: 1.0 },
-                    (decodedText) => {
-                        const matchedName = productDatabase[decodedText] || `新商品 (條碼: ${decodedText})`;
+                    async (decodedText) => {
+                        const now = Date.now();
+                        // 避免 2 秒內重複掃描同一條碼
+                        if (decodedText === lastScannedCode && now - lastScannedTime < 2000) {
+                            return;
+                        }
+                        lastScannedCode = decodedText;
+                        lastScannedTime = now;
+
+                        const matchedName = productDatabase[decodedText] || `條碼商品 (${decodedText})`;
+                        const isContinuous = document.getElementById('continuous-scan-toggle').checked;
+
                         document.getElementById('item-name').value = matchedName;
                         document.getElementById('item-barcode').value = decodedText;
-                        
-                        if (productDatabase[decodedText]) {
-                            alert(`✅ 成功辨識商品：\n${matchedName}`);
+
+                        if (isContinuous) {
+                            // 連續盤點模式：尋找是否有對應品項並自動 +1 庫存，無則提示帶入
+                            const existingItem = currentInventory.find(item => item.barcode === decodedText || item.name === matchedName);
+                            if (existingItem) {
+                                await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
+                                showToast(`⚡ [連續盤點] ${matchedName} 數量 +1 (現有: ${existingItem.quantity + 1})`);
+                            } else {
+                                showToast(`🔔 掃描到新品項：${matchedName}，請確認期限後點擊新增！`);
+                            }
                         } else {
-                            alert(`⚠️ 掃描到新條碼：${decodedText}\n已自動填入代碼，請確認品名後直接新增！`);
+                            showToast(`✅ 成功辨識條碼：${matchedName}`);
+                            stopScanner();
                         }
-                        stopScanner();
                     },
                     (errorMessage) => {}
                 );
@@ -624,9 +674,10 @@
             return { diffDays, status, rowClass, badgeClass, statusCategory };
         }
 
-        function renderTable() {
+        window.renderTable = function() {
             const tbody = document.getElementById('inventory-list');
             const keyword = document.getElementById('search-input').value.trim().toLowerCase();
+            const sortMode = document.getElementById('sort-select').value;
             tbody.innerHTML = '';
 
             let filteredData = currentInventory.filter(item => {
@@ -642,7 +693,22 @@
                 return statusCategory === currentStatusFilter;
             });
 
-            filteredData.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+            // 多重排序邏輯
+            filteredData.sort((a, b) => {
+                const qtyA = parseInt(a.quantity) || 0;
+                const qtyB = parseInt(b.quantity) || 0;
+
+                if (sortMode === 'EXPIRY_ASC') {
+                    return new Date(a.expiry) - new Date(b.expiry);
+                } else if (sortMode === 'QTY_ASC') {
+                    return qtyA - qtyB;
+                } else if (sortMode === 'QTY_DESC') {
+                    return qtyB - qtyA;
+                } else if (sortMode === 'NAME_ASC') {
+                    return a.name.localeCompare(b.name, 'zh-TW');
+                }
+                return 0;
+            });
 
             document.getElementById('item-count-text').textContent = `顯示 ${filteredData.length} / 共 ${currentInventory.length} 項商品`;
 
@@ -657,9 +723,16 @@
                 let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
                 const isLowStock = (qty > 0 && qty <= 2);
 
+                // 促銷與智慧折扣推薦標籤
                 let discountBadge = '';
                 if (item.discount && qty > 0) {
                     discountBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200">🏷️ ${item.discount}</span>`;
+                } else if (qty > 0 && !item.discount) {
+                    if (diffDays >= 0 && diffDays < 7) {
+                        discountBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200 animate-pulse">💡 建議 5 折</span>`;
+                    } else if (diffDays >= 7 && diffDays < 14) {
+                        discountBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">💡 建議 7 折</span>`;
+                    }
                 }
 
                 let lowStockBadge = isLowStock ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white shadow-sm">⚠️ 低庫存</span>` : '';
@@ -691,7 +764,7 @@
                 `;
                 tbody.appendChild(tr);
             });
-        }
+        };
 
         function renderLogs() {
             const tbody = document.getElementById('logs-list');
@@ -875,8 +948,10 @@
             await firestoreMethods.updateDoc(itemRef, { quantity: newQty });
 
             if (newQty === 0) {
+                showToast(`⚪️ ${name} 數量已清零並標示為售完`);
                 await logActivity("⚪️ 商品售完", name, "數量減至 0，自動切換為已售完狀態");
             } else {
+                showToast(`🔄 ${name} 數量調整為 ${newQty}`);
                 const actionText = delta > 0 ? `數量增加 +${delta} (總數: ${newQty})` : `數量減少 ${delta} (總數: ${newQty})`;
                 await logActivity("🔄 數量調整", name, actionText);
             }
@@ -886,6 +961,7 @@
             if (!db) return alert("連線異常，無法更新資料");
             const itemRef = firestoreMethods.doc(db, "inventory", id);
             await firestoreMethods.updateDoc(itemRef, { quantity: 0 });
+            showToast(`⚪️ ${name} 已標示為一鍵售完`);
             await logActivity("⚪️ 商品售完", name, "手動標示為一鍵售完 (數量清零)");
         };
 
@@ -893,6 +969,7 @@
             if (!db) return alert("連線異常，無法刪除資料");
             if (confirm(`確定要從庫存中刪除「${name}」嗎？`)) {
                 await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+                showToast(`❌ 已刪除「${name}」`);
                 await logActivity("❌ 刪除品項", name, "已將該筆庫存記錄完整移除");
             }
         };
@@ -932,6 +1009,7 @@
                 expiry: expiry
             });
 
+            showToast(`➕ 成功新增「${name}」至庫存！`);
             const discountMsg = discount ? ` [標籤: ${discount}]` : '';
             await logActivity("➕ 新增商品", name, `初始數量: ${isNaN(quantity) ? 1 : quantity}, 有效期限: ${expiry}${discountMsg}`);
 
