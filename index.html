@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (相機掃描升級版)</title>
+    <title>超市商品效期管理系統 (儀表板升級版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入條碼掃描專用函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -13,6 +14,7 @@
 <body class="bg-gray-100 p-8">
 
     <div class="max-w-6xl mx-auto">
+        <!-- 頂部標題與狀態 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期與商品庫系統</h1>
@@ -26,6 +28,27 @@
             </div>
         </div>
 
+        <!-- 📊 營運數據儀表板 (Stats Dashboard) -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">總庫存件數</span>
+                <span id="stat-total-qty" class="text-2xl font-bold text-gray-800 mt-2">0 件</span>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-red-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-red-500 uppercase tracking-wider">🔴 嚴重屆期 (&lt;14天)</span>
+                <span id="stat-red-count" class="text-2xl font-bold text-red-600 mt-2">0 項</span>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-yellow-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-yellow-600 uppercase tracking-wider">🟡 黃燈警告 (14-29天)</span>
+                <span id="stat-yellow-count" class="text-2xl font-bold text-yellow-600 mt-2">0 項</span>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500 flex flex-col justify-between">
+                <span class="text-xs font-semibold text-green-600 uppercase tracking-wider">🟢 安全庫存 (30天以上)</span>
+                <span id="stat-green-count" class="text-2xl font-bold text-green-600 mt-2">0 項</span>
+            </div>
+        </div>
+
+        <!-- 視圖切換與搜尋列 -->
         <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
             <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
                 <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 庫存清單視圖</button>
@@ -38,6 +61,7 @@
             </div>
         </div>
 
+        <!-- 新增商品表單 (常用商品按鈕 + 相機掃描) -->
         <div class="bg-white p-6 rounded-lg shadow-md mb-8 relative">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
@@ -46,6 +70,17 @@
                 </button>
             </div>
 
+            <!-- ⚡ 常用商品快速點選面板 -->
+            <div class="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                <p class="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    ⚡ 常用商品快速點選（點擊即可一鍵帶入名稱與條碼）：
+                </p>
+                <div id="quick-buttons-grid" class="flex flex-wrap gap-2">
+                    <!-- 動態載入 -->
+                </div>
+            </div>
+
+            <!-- 相機即時預畫面框 -->
             <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center shadow-inner">
                 <p class="text-xs text-gray-500 mb-2">請將商品的條碼對準下方掃描框</p>
                 <div id="reader" class="w-full rounded overflow-hidden border"></div>
@@ -54,10 +89,11 @@
 
             <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end relative">
                 <div class="flex-1 w-full relative">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (可掃描條碼或打字搜尋主檔)</label>
-                    <input type="text" id="item-name" autocomplete="off" required placeholder="掃描條碼或輸入關鍵字..." class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (點上方按鈕、掃描條碼或打字聯想)</label>
+                    <input type="text" id="item-name" autocomplete="off" required placeholder="點選上方常用按鈕或輸入關鍵字..." class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                     <input type="hidden" id="item-barcode" value="">
                     
+                    <!-- 智慧聯想下拉選單 -->
                     <div id="suggestions-box" class="hidden absolute left-0 right-0 top-16 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto"></div>
                 </div>
                 <div class="w-full md:w-32">
@@ -72,6 +108,7 @@
             </form>
         </div>
 
+        <!-- 視圖 A：列表清單容器 -->
         <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
                 <span id="item-count-text">共載入 0 項商品</span>
@@ -89,10 +126,12 @@
                     </tr>
                 </thead>
                 <tbody id="inventory-list" class="divide-y divide-gray-200">
-                    </tbody>
+                    <!-- 動態載入 -->
+                </tbody>
             </table>
         </div>
 
+        <!-- 視圖 B：效期月曆容器 -->
         <div id="view-calendar-container" class="hidden bg-white p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <button onclick="changeMonth(-1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">◀ 上個月</button>
@@ -112,6 +151,7 @@
         </div>
     </div>
 
+    <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -139,7 +179,53 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 📷 開啟/關閉相機掃描條碼
+        // 更新營運數據儀表板數值
+        function updateDashboardStats() {
+            let totalQty = 0;
+            let redCount = 0;
+            let yellowCount = 0;
+            let greenCount = 0;
+
+            currentInventory.forEach(item => {
+                const qty = parseInt(item.quantity) || 0;
+                totalQty += qty;
+
+                const expiryDate = new Date(item.expiry);
+                expiryDate.setHours(0, 0, 0, 0);
+                const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+
+                if (diffDays < 14) {
+                    redCount++;
+                } else if (diffDays < 30) {
+                    yellowCount++;
+                } else {
+                    greenCount++;
+                }
+            });
+
+            document.getElementById('stat-total-qty').textContent = `${totalQty} 件`;
+            document.getElementById('stat-red-count').textContent = `${redCount} 項`;
+            document.getElementById('stat-yellow-count').textContent = `${yellowCount} 項`;
+            document.getElementById('stat-green-count').textContent = `${greenCount} 項`;
+        }
+
+        function renderQuickButtons() {
+            const grid = document.getElementById('quick-buttons-grid');
+            grid.innerHTML = '';
+            
+            for (const [barcode, name] of Object.entries(productDatabase)) {
+                const btn = document.createElement('button');
+                btn.type = "button";
+                btn.className = "bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition shadow-sm";
+                btn.textContent = name;
+                btn.onclick = function() {
+                    document.getElementById('item-name').value = name;
+                    document.getElementById('item-barcode').value = barcode;
+                };
+                grid.appendChild(btn);
+            }
+        }
+
         window.toggleScanner = async function() {
             const container = document.getElementById('scanner-container');
             if (!container.classList.contains('hidden')) {
@@ -157,13 +243,8 @@
 
                 await html5QrCode.start(
                     { facingMode: "environment" },
-                    { 
-                        fps: 15, 
-                        qrbox: { width: 260, height: 140 },
-                        aspectRatio: 1.0
-                    },
+                    { fps: 15, qrbox: { width: 260, height: 140 }, aspectRatio: 1.0 },
                     (decodedText) => {
-                        // 掃描成功！比對商品主檔
                         const matchedName = productDatabase[decodedText] || `新商品 (條碼: ${decodedText})`;
                         document.getElementById('item-name').value = matchedName;
                         document.getElementById('item-barcode').value = decodedText;
@@ -175,13 +256,11 @@
                         }
                         stopScanner();
                     },
-                    (errorMessage) => {
-                        // 掃描中尋找條碼（略過不計錯以保持流暢）
-                    }
+                    (errorMessage) => {}
                 );
             } catch (err) {
                 console.error("相機啟動失敗：", err);
-                alert("無法啟動相機！請確認：\n1. 瀏覽器已授權相機權限。\n2. 網址為 https:// 安全連線。\n3. 相機未被其他應用程式佔用。");
+                alert("無法啟動相機！請確認：\n1. 瀏覽器已授權相機權限。\n2. 網址為 https:// 安全連線。");
                 stopScanner();
             }
         };
@@ -201,7 +280,6 @@
             }
         };
 
-        // 💡 智慧聯想輸入框監聽
         const nameInput = document.getElementById('item-name');
         const suggestionsBox = document.getElementById('suggestions-box');
 
@@ -426,6 +504,7 @@
                             productDatabase[data.barcode] = data.name;
                         }
                     });
+                    renderQuickButtons();
                 }
             });
 
@@ -434,6 +513,10 @@
                 snapshot.forEach((docSnap) => {
                     currentInventory.push({ id: docSnap.id, ...docSnap.data() });
                 });
+
+                // 更新儀表板數據
+                updateDashboardStats();
+
                 if (currentView === 'list') renderTable();
                 else renderCalendar();
                 
