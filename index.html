@@ -92,6 +92,13 @@
                 <h2 id="calendar-month-title" class="text-xl font-bold text-gray-800">2026年 9月</h2>
                 <button onclick="changeMonth(1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">下個月 ▶</button>
             </div>
+            <!-- 顏色圖例說明 -->
+            <div class="flex flex-wrap gap-4 mb-4 text-xs font-medium text-gray-600 bg-gray-50 p-3 rounded-md border">
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-red-500 rounded-full inline-block"></span> 🔴 屆期 (&lt;14天)</div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-yellow-500 rounded-full inline-block"></span> 🟡 警告 (&lt;30天)</div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-green-500 rounded-full inline-block"></span> 🟢 安全 (30天以上)</div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-gray-400 rounded-full inline-block"></span> ⚫️ 已過期</div>
+            </div>
             <!-- 星期標頭 -->
             <div class="grid grid-cols-7 gap-2 text-center font-bold text-gray-500 mb-2">
                 <div class="text-red-500">日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-blue-500">六</div>
@@ -111,13 +118,11 @@
 
         let currentInventory = [];
         let db, inventoryCol, firestoreMethods;
-        let currentView = 'list'; // 預設視圖：list 或 calendar
+        let currentView = 'list'; 
         
-        // 月曆目前顯示的年月（預設為今天所在的年月）
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
 
-        // 切換視圖主函式
         window.switchView = function(viewType) {
             currentView = viewType;
             const listContainer = document.getElementById('view-list-container');
@@ -149,20 +154,27 @@
             const diffTime = expiryDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             
-            let status = '', rowClass = '';
+            let status = '', rowClass = '', badgeClass = '';
             if (diffDays < 0) {
-                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500';
+                status = '已過期'; 
+                rowClass = 'bg-gray-200 text-gray-500';
+                badgeClass = 'bg-gray-100 border-gray-300 text-gray-700';
             } else if (diffDays < 14) {
-                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900';
+                status = '屆期 (<14天)'; 
+                rowClass = 'bg-red-50 text-red-900';
+                badgeClass = 'bg-red-50 border-red-200 text-red-700';
             } else if (diffDays < 30) {
-                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900';
+                status = '警告 (<30天)'; 
+                rowClass = 'bg-yellow-50 text-yellow-900';
+                badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800';
             } else {
-                status = '安全'; rowClass = 'bg-green-50 text-green-900';
+                status = '安全'; 
+                rowClass = 'bg-green-50 text-green-900';
+                badgeClass = 'bg-green-50 border-green-200 text-green-700';
             }
-            return { diffDays, status, rowClass };
+            return { diffDays, status, rowClass, badgeClass };
         }
 
-        // 渲染列表視圖
         function renderTable() {
             const tbody = document.getElementById('inventory-list');
             const keyword = document.getElementById('search-input').value.trim().toLowerCase();
@@ -204,17 +216,15 @@
             });
         }
 
-        // 渲染月曆視圖
+        // 渲染月曆視圖 (加入顏色區別)
         function renderCalendar() {
             document.getElementById('calendar-month-title').textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
             const grid = document.getElementById('calendar-grid');
             grid.innerHTML = '';
 
-            // 取得當月第一天是星期幾、當月總天數
             const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
             const totalDays = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
-            // 將商品依照「YYYY-MM-DD」格式分類對應到日曆天數
             const expiryMap = {};
             currentInventory.forEach(item => {
                 if (!expiryMap[item.expiry]) {
@@ -223,23 +233,20 @@
                 expiryMap[item.expiry].push(item);
             });
 
-            // 填入上個月的空白格子
             for (let i = 0; i < firstDayIndex; i++) {
                 const emptyCell = document.createElement('div');
-                emptyCell.className = "h-28 bg-gray-50 rounded-lg border border-transparent";
+                emptyCell.className = "h-32 bg-gray-50 rounded-lg border border-transparent";
                 grid.appendChild(emptyCell);
             }
 
-            // 填入當月每一天
             for (let day = 1; day <= totalDays; day++) {
                 const monthStr = String(calendarMonth + 1).padStart(2, '0');
                 const dayStr = String(day).padStart(2, '0');
                 const dateKey = `${calendarYear}-${monthStr}-${dayStr}`;
 
                 const cell = document.createElement('div');
-                cell.className = "h-28 bg-white rounded-lg border border-gray-200 p-2 overflow-y-auto flex flex-col justify-between";
+                cell.className = "h-32 bg-white rounded-lg border border-gray-200 p-2 overflow-y-auto flex flex-col justify-between";
 
-                // 檢查是否為今天
                 const isToday = (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate());
                 
                 let dayHeaderClass = "font-bold text-sm mb-1 flex justify-between items-center";
@@ -251,15 +258,17 @@
 
                 let htmlContent = `<div class="${dayHeaderClass}"><span>${day}</span>`;
                 if (expiryMap[dateKey] && expiryMap[dateKey].length > 0) {
-                    htmlContent += `<span class="bg-red-100 text-red-600 text-[10px] px-1 rounded-full">${expiryMap[dateKey].length}項到期</span>`;
+                    htmlContent += `<span class="bg-gray-100 text-gray-600 text-[10px] px-1 rounded-full font-medium">${expiryMap[dateKey].length}項</span>`;
                 }
                 htmlContent += `</div>`;
 
-                // 渲染當天到期的商品標籤
+                // 渲染當天到期的商品標籤 (根據剩餘天數上色)
                 htmlContent += `<div class="space-y-1">`;
                 if (expiryMap[dateKey]) {
                     expiryMap[dateKey].forEach(item => {
-                        htmlContent += `<div class="bg-red-50 border border-red-200 text-red-700 text-xs px-1.5 py-0.5 rounded truncate" title="${item.name} (數量: ${item.quantity})">⚠️ ${item.name} (${item.quantity}個)</div>`;
+                        const { diffDays, badgeClass } = calculateStatus(item.expiry);
+                        let icon = diffDays < 0 ? '⚫️' : diffDays < 14 ? '🔴' : diffDays < 30 ? '🟡' : '🟢';
+                        htmlContent += `<div class="border text-xs px-1.5 py-0.5 rounded truncate ${badgeClass}" title="${item.name} (數量: ${item.quantity})">${icon} ${item.name} (${item.quantity})</div>`;
                     });
                 }
                 htmlContent += `</div>`;
@@ -269,7 +278,6 @@
             }
         }
 
-        // 月曆換月按鈕
         window.changeMonth = function(direction) {
             calendarMonth += direction;
             if (calendarMonth > 11) {
@@ -282,12 +290,10 @@
             renderCalendar();
         };
 
-        // 搜尋輸入監聽
         document.getElementById('search-input').addEventListener('input', function() {
             if (currentView === 'list') renderTable();
         });
 
-        // 雲端資料同步監聽
         try {
             document.getElementById('sync-status').textContent = '連線中...';
             document.getElementById('sync-status').className = 'bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse';
@@ -316,7 +322,6 @@
                     currentInventory.push({ id: docSnap.id, ...docSnap.data() });
                 });
                 
-                // 根據目前所在視圖進行刷新
                 if (currentView === 'list') {
                     renderTable();
                 } else {
