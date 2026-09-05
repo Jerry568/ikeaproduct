@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (儀表板升級版)</title>
+    <title>超市商品效期管理系統 (稽核日誌升級版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入條碼掃描專用函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
@@ -51,8 +51,9 @@
         <!-- 視圖切換與搜尋列 -->
         <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
             <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
-                <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 庫存清單視圖</button>
-                <button id="btn-view-calendar" onclick="switchView('calendar')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📅 效期月曆視圖</button>
+                <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 庫存清單視圖</button>
+                <button id="btn-view-calendar" onclick="switchView('calendar')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📅 效期月曆視圖</button>
+                <button id="btn-view-logs" onclick="switchView('logs')" class="flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📜 異動日誌</button>
             </div>
 
             <div class="w-full md:w-80 relative" id="search-box-container">
@@ -61,8 +62,8 @@
             </div>
         </div>
 
-        <!-- 新增商品表單 (常用商品按鈕 + 相機掃描) -->
-        <div class="bg-white p-6 rounded-lg shadow-md mb-8 relative">
+        <!-- 新增商品表單 -->
+        <div id="add-item-card" class="bg-white p-6 rounded-lg shadow-md mb-8 relative">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
                 <button type="button" onclick="toggleScanner()" id="scanner-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
@@ -149,6 +150,27 @@
             </div>
             <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
         </div>
+
+        <!-- 視圖 C：異動日誌與稽核紀錄容器 -->
+        <div id="view-logs-container" class="hidden bg-white rounded-lg shadow-md overflow-x-auto">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
+                <span id="log-count-text">共記錄 0 筆異動足跡</span>
+                <span>🔒 系統自動稽核紀錄，確保庫存帳務透明</span>
+            </div>
+            <table class="min-w-full text-left border-collapse whitespace-nowrap">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="px-6 py-4 font-semibold text-gray-700">操作時間</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">異動類型</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">變動詳情</th>
+                    </tr>
+                </thead>
+                <tbody id="logs-list" class="divide-y divide-gray-200">
+                    <!-- 動態載入 -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- 引入 Firebase 與業務邏輯模組 -->
@@ -158,8 +180,9 @@
         document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
 
         let currentInventory = [];
+        let currentLogs = [];
         let productDatabase = {};
-        let db, inventoryCol, productsCol, firestoreMethods;
+        let db, inventoryCol, productsCol, logsCol, firestoreMethods;
         let currentView = 'list'; 
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
@@ -179,7 +202,22 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 更新營運數據儀表板數值
+        // 📝 寫入稽核日誌
+        async function logActivity(type, itemName, detail) {
+            if (!db) return;
+            try {
+                await firestoreMethods.addDoc(logsCol, {
+                    type: type,       // ➕ 新增, 🔄 數量調整, ❌ 刪除
+                    itemName: itemName,
+                    detail: detail,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (err) {
+                console.error("寫入日誌失敗：", err);
+            }
+        }
+
+        // 更新儀表板數據
         function updateDashboardStats() {
             let totalQty = 0;
             let redCount = 0;
@@ -324,24 +362,43 @@
             currentView = viewType;
             const listContainer = document.getElementById('view-list-container');
             const calContainer = document.getElementById('view-calendar-container');
+            const logsContainer = document.getElementById('view-logs-container');
+            const addItemCard = document.getElementById('add-item-card');
+            
             const btnList = document.getElementById('btn-view-list');
             const btnCal = document.getElementById('btn-view-calendar');
+            const btnLogs = document.getElementById('btn-view-logs');
             const searchBox = document.getElementById('search-box-container');
+
+            // 重置按鈕樣式
+            btnList.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+            btnCal.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+            btnLogs.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
 
             if (viewType === 'list') {
                 listContainer.classList.remove('hidden');
                 calContainer.classList.add('hidden');
+                logsContainer.classList.add('hidden');
+                addItemCard.classList.remove('hidden');
                 searchBox.classList.remove('hidden');
-                btnList.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
-                btnCal.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+                btnList.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
                 renderTable();
-            } else {
+            } else if (viewType === 'calendar') {
                 listContainer.classList.add('hidden');
                 calContainer.classList.remove('hidden');
+                logsContainer.classList.add('hidden');
+                addItemCard.classList.remove('hidden');
                 searchBox.classList.add('hidden');
-                btnCal.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
-                btnList.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+                btnCal.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
                 renderCalendar();
+            } else if (viewType === 'logs') {
+                listContainer.classList.add('hidden');
+                calContainer.classList.add('hidden');
+                logsContainer.classList.remove('hidden');
+                addItemCard.classList.add('hidden'); // 檢視日誌時隱藏新增表單，保留畫面空間
+                searchBox.classList.add('hidden');
+                btnLogs.className = "flex-1 md:flex-none px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                renderLogs();
             }
         };
 
@@ -391,15 +448,47 @@
                     <td class="px-6 py-4 font-bold">${diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays} 天</td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex items-center justify-center gap-3">
-                            <button onclick="updateQuantity('${item.id}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">-</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">-</button>
                             <span class="w-8 text-center font-bold text-lg">${item.quantity}</span>
-                            <button onclick="updateQuantity('${item.id}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">+</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm">+</button>
                         </div>
                     </td>
                     <td class="px-6 py-4">${statusIcon}${status}</td>
                     <td class="px-6 py-4 text-center">
-                        <button onclick="deleteItem('${item.id}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-3 py-1 rounded shadow-sm border border-red-200 hover:bg-red-50">刪除</button>
+                        <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-3 py-1 rounded shadow-sm border border-red-200 hover:bg-red-50">刪除</button>
                     </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderLogs() {
+            const tbody = document.getElementById('logs-list');
+            tbody.innerHTML = '';
+            
+            document.getElementById('log-count-text').textContent = `共記錄 ${currentLogs.length} 筆異動足跡`;
+
+            if (currentLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-gray-400">目前尚無任何異動紀錄</td></tr>`;
+                return;
+            }
+
+            currentLogs.forEach(log => {
+                const dateObj = new Date(log.timestamp);
+                const timeStr = isNaN(dateObj) ? log.timestamp : dateObj.toLocaleString('zh-TW');
+
+                let badgeColor = "bg-gray-100 text-gray-800";
+                if (log.type?.includes('新增')) badgeColor = "bg-green-100 text-green-800";
+                else if (log.type?.includes('調整')) badgeColor = "bg-blue-100 text-blue-800";
+                else if (log.type?.includes('刪除')) badgeColor = "bg-red-100 text-red-800";
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 text-xs text-gray-500 font-mono">${timeStr}</td>
+                    <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor}">${log.type}</span></td>
+                    <td class="px-6 py-4 font-medium text-gray-800">${log.itemName}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">${log.detail}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -490,6 +579,7 @@
             db = firestore.getFirestore(app);
             inventoryCol = firestore.collection(db, "inventory");
             productsCol = firestore.collection(db, "products");
+            logsCol = firestore.collection(db, "audit_logs"); // 稽核日誌集合
 
             firestore.onSnapshot(productsCol, (snapshot) => {
                 if (snapshot.empty) {
@@ -508,17 +598,27 @@
                 }
             });
 
+            // 同步監聽稽核日誌
+            firestore.onSnapshot(logsCol, (snapshot) => {
+                currentLogs = [];
+                snapshot.forEach((docSnap) => {
+                    currentLogs.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                // 按時間由新到舊排序
+                currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                if (currentView === 'logs') renderLogs();
+            });
+
             firestore.onSnapshot(inventoryCol, (snapshot) => {
                 currentInventory = [];
                 snapshot.forEach((docSnap) => {
                     currentInventory.push({ id: docSnap.id, ...docSnap.data() });
                 });
 
-                // 更新儀表板數據
                 updateDashboardStats();
 
                 if (currentView === 'list') renderTable();
-                else renderCalendar();
+                else if (currentView === 'calendar') renderCalendar();
                 
                 document.getElementById('sync-status').textContent = '✅ 已連線';
                 document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold';
@@ -534,17 +634,25 @@
             document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
         }
 
-        window.updateQuantity = async function(id, currentQty, delta) {
+        window.updateQuantity = async function(id, name, currentQty, delta) {
             if (!db) return alert("連線異常，無法更新資料");
             let newQty = currentQty + delta;
             if (newQty < 0) newQty = 0;
             const itemRef = firestoreMethods.doc(db, "inventory", id);
             await firestoreMethods.updateDoc(itemRef, { quantity: newQty });
+
+            // 寫入日誌
+            const actionText = delta > 0 ? `數量增加 +${delta} (總數: ${newQty})` : `數量減少 ${delta} (總數: ${newQty})`;
+            await logActivity("🔄 數量調整", name, actionText);
         };
 
-        window.deleteItem = async function(id) {
+        window.deleteItem = async function(id, name) {
             if (!db) return alert("連線異常，無法刪除資料");
-            await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+            if (confirm(`確定要從庫存中刪除「${name}」嗎？`)) {
+                await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+                // 寫入日誌
+                await logActivity("❌ 刪除品項", name, "已將該筆庫存記錄完整移除");
+            }
         };
 
         window.exportToCSV = function() {
@@ -578,6 +686,9 @@
                 quantity: quantity || 1,
                 expiry: expiry
             });
+
+            // 寫入日誌
+            await logActivity("➕ 新增商品", name, `初始數量: ${quantity || 1}, 有效期限: ${expiry}`);
 
             if (barcode && !productDatabase[barcode]) {
                 await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
