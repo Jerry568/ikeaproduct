@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統</title>
+    <title>超市商品效期與進銷存損益管理系統 (災難備份版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -65,6 +65,14 @@
                 <button onclick="exportToCSV()" class="bg-green-600 text-white px-2.5 py-1.5 rounded hover:bg-green-700 transition font-medium shadow-sm">
                     📥 匯出
                 </button>
+                <!-- 💾 全系統 JSON 災難備份與還原按鈕 -->
+                <button onclick="backupToJSON()" class="bg-purple-600 text-white px-2.5 py-1.5 rounded hover:bg-purple-700 transition font-medium shadow-sm">
+                    💾 備份 JSON
+                </button>
+                <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="restoreFromJSON(event)">
+                <button onclick="document.getElementById('json-file-input').click()" class="bg-amber-600 text-white px-2.5 py-1.5 rounded hover:bg-amber-700 transition font-medium shadow-sm">
+                    🔄 還原 JSON
+                </button>
             </div>
         </div>
 
@@ -74,7 +82,7 @@
             <p class="text-xs text-gray-600">列印日期：<span id="print-date"></span></p>
         </div>
 
-        <!-- 📊 營運數據與財務損益儀表板 (Stats & Profit Analytics Dashboard) -->
+        <!-- 📊 營運數據與財務損益儀表板 -->
         <div class="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-2 mb-4 no-print">
             <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-blue-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-gray-400 uppercase">總庫存</span>
@@ -97,7 +105,7 @@
                 <span id="stat-low-count" class="text-base font-bold text-purple-600 dark:text-purple-400 mt-0.5">0 項</span>
             </div>
 
-            <!-- 💰 財務損益區塊 (Financial Analytics) -->
+            <!-- 💰 財務損益區塊 -->
             <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg shadow-sm border-l-4 border-slate-500 flex flex-col justify-between">
                 <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">💵 總進貨成本</span>
                 <span id="stat-total-cost" class="text-base font-bold text-slate-700 dark:text-slate-300 mt-0.5">$0</span>
@@ -203,7 +211,6 @@
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架</label>
                         <input type="text" id="item-location" placeholder="A1-02" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
-                    <!-- 💰 成本與售價欄位 -->
                     <div class="md:col-span-1">
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">進價 ($)</label>
                         <input type="number" id="item-cost" min="0" value="35" placeholder="成本" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
@@ -260,7 +267,7 @@
                     <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                     <option value="零食餅乾">🍪 零食餅乾</option>
                     <option value="熟食調理">🍱 熟食調理</option>
-                    <option value="罐頭乾貨">罐 罐頭乾貨</option>
+                    <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                     <option value="其他">📦 其他品項</option>
                 </select>
 
@@ -385,7 +392,7 @@
         ⬆️
     </button>
 
-    <!-- 📥 浮動批量操作工具列 (Batch Action Bar) -->
+    <!-- 📥 浮動批量操作工具列 -->
     <div id="batch-action-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-gray-900 text-white px-5 py-2.5 rounded-full shadow-2xl z-50 flex items-center gap-3 border border-gray-700 no-print text-xs">
         <span class="font-bold text-blue-400">已選 <span id="selected-count">0</span> 項</span>
         <div class="h-3 w-px bg-gray-700"></div>
@@ -452,6 +459,92 @@
             "471000001": "鮮乳 (全脂)"
         };
 
+        // 💾 1. 全系統 JSON 備份導出
+        window.backupToJSON = function() {
+            const backupData = {
+                version: "3.0_PRO",
+                backupTime: new Date().toISOString(),
+                inventory: currentInventory,
+                products: productDatabase,
+                logs: currentLogs
+            };
+
+            const jsonStr = JSON.stringify(backupData, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `門市庫存全系統備份_${today.toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast("💾 全系統 JSON 災難備份檔匯出成功！");
+        };
+
+        // 🔄 2. 全系統 JSON 災難還原
+        window.restoreFromJSON = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    const backupData = JSON.parse(evt.target.result);
+
+                    if (!backupData || (!backupData.inventory && !backupData.products)) {
+                        alert("⚠️ 無效的備份檔案格式！無法進行還原。");
+                        return;
+                    }
+
+                    const invCount = Array.isArray(backupData.inventory) ? backupData.inventory.length : 0;
+                    const prodCount = backupData.products ? Object.keys(backupData.products).length : 0;
+                    const timeStr = backupData.backupTime ? new Date(backupData.backupTime).toLocaleString('zh-TW') : '未知';
+
+                    const confirmMsg = `⚠️ 警告：確定要進行災難還原嗎？\n\n- 備份時間：${timeStr}\n- 包含庫存筆數：${invCount} 筆\n- 包含條碼對應：${prodCount} 筆\n\n系統將自動同步並寫入資料庫！`;
+                    
+                    if (!confirm(confirmMsg)) {
+                        e.target.value = '';
+                        return;
+                    }
+
+                    showToast("🔄 正在寫入並還原系統資料，請稍候...");
+
+                    let restoredInv = 0;
+                    if (Array.isArray(backupData.inventory)) {
+                        for (const item of backupData.inventory) {
+                            const newItem = { ...item };
+                            delete newItem.id; // 移除舊 Doc ID，產生新 ID
+                            await firestoreMethods.addDoc(inventoryCol, newItem);
+                            restoredInv++;
+                        }
+                    }
+
+                    let restoredProd = 0;
+                    if (backupData.products && typeof backupData.products === 'object') {
+                        for (const [barcode, name] of Object.entries(backupData.products)) {
+                            if (!productDatabase[barcode]) {
+                                await firestoreMethods.addDoc(productsCol, { barcode, name });
+                                restoredProd++;
+                            }
+                        }
+                    }
+
+                    showToast(`✅ 災難還原完成！還原 ${restoredInv} 筆庫存，${restoredProd} 筆條碼資料。`);
+                    await logActivity("🔄 災難還原", "JSON全系統還原", `成功還原 ${restoredInv} 筆庫存與 ${restoredProd} 筆條碼字典`);
+
+                } catch (err) {
+                    console.error("還原失敗：", err);
+                    alert("❌ 備份檔案解析失敗：" + err.message);
+                } finally {
+                    e.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        };
+
         // 🔌 實體條碼槍自動監聽邏輯
         let barcodeGunBuffer = "";
         let lastKeyTime = 0;
@@ -501,7 +594,6 @@
             }
         }
 
-        // 💰 折扣後實際單價計算
         function getEffectiveUnitPrice(price, discount) {
             if (!discount) return price;
             if (discount === '8折') return price * 0.8;
@@ -882,7 +974,6 @@
             });
         }
 
-        // 💰 算精細財務統計與損益分析
         function updateDashboardStats() {
             let totalQty = 0;
             let redCount = 0;
@@ -892,15 +983,15 @@
             let lowCount = 0;
             let soldOutCount = 0;
 
-            let totalCostVal = 0;   // 總進貨成本
-            let totalRevenueVal = 0; // 預估總銷售額
-            let totalProfitVal = 0;  // 預估總毛利
-            let riskCostVal = 0;     // 報廢成本風險
+            let totalCostVal = 0;
+            let totalRevenueVal = 0;
+            let totalProfitVal = 0;
+            let riskCostVal = 0;
 
             currentInventory.forEach(item => {
                 const qty = parseInt(item.quantity) || 0;
                 const price = parseFloat(item.price) || 0;
-                const cost = parseFloat(item.cost) || (price * 0.7); // 若無成本資料預設 7 折進價
+                const cost = parseFloat(item.cost) || (price * 0.7);
                 
                 const effectivePrice = getEffectiveUnitPrice(price, item.discount);
                 const itemTotalCost = qty * cost;
@@ -924,10 +1015,10 @@
 
                     if (diffDays < 0) {
                         expiredCount++;
-                        riskCostVal += itemTotalCost; // 累加過期商品的進貨成本
+                        riskCostVal += itemTotalCost;
                     } else if (diffDays < 14) {
                         redCount++;
-                        riskCostVal += itemTotalCost; // 累加屆期商品的進貨成本
+                        riskCostVal += itemTotalCost;
                     } else if (diffDays < 30) {
                         yellowCount++;
                     } else {
@@ -1307,7 +1398,6 @@
 
                 let lowStockBadge = isLowStock ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-600 text-white shadow-sm">⚠️低庫存</span>` : '';
 
-                // 毛利顏色標示
                 let profitBadgeClass = unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold animate-pulse";
 
                 const tr = document.createElement('tr');
@@ -1382,6 +1472,7 @@
                 else if (log.type?.includes('調整')) badgeColor = "bg-blue-100 text-blue-800";
                 else if (log.type?.includes('售完')) badgeColor = "bg-gray-200 text-gray-800";
                 else if (log.type?.includes('刪除')) badgeColor = "bg-red-100 text-red-800";
+                else if (log.type?.includes('還原')) badgeColor = "bg-amber-100 text-amber-800";
 
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
