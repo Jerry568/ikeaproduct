@@ -12,7 +12,8 @@
 <body class="bg-gray-100 p-8">
 
     <div class="max-w-6xl mx-auto">
-        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <!-- 頂部標題與狀態 -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期管理系統</h1>
                 <span id="sync-status" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
@@ -22,6 +23,21 @@
                 <button onclick="exportToCSV()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition font-medium shadow-sm">
                     📥 匯出 CSV 報表
                 </button>
+            </div>
+        </div>
+
+        <!-- 視圖切換與搜尋列 -->
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <!-- 視圖切換按鈕 -->
+            <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
+                <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 列表清單視圖</button>
+                <button id="btn-view-calendar" onclick="switchView('calendar')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📅 效期月曆視圖</button>
+            </div>
+
+            <!-- 搜尋框 (僅在列表模式顯眼) -->
+            <div class="w-full md:w-80 relative" id="search-box-container">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
+                <input type="text" id="search-input" placeholder="快速搜尋商品名稱..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
             </div>
         </div>
 
@@ -45,8 +61,12 @@
             </form>
         </div>
 
-        <!-- 效期資料表 -->
-        <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+        <!-- 視圖 A：列表清單容器 -->
+        <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
+                <span id="item-count-text">共載入 0 項商品</span>
+                <span>💡 提示：點擊數量可直接進行現場增減</span>
+            </div>
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
                     <tr>
@@ -59,23 +79,70 @@
                     </tr>
                 </thead>
                 <tbody id="inventory-list" class="divide-y divide-gray-200">
-                    <!-- 資料將透過 Firestore 動態載入 -->
+                    <!-- 動態載入 -->
                 </tbody>
             </table>
         </div>
+
+        <!-- 視圖 B：效期月曆容器 -->
+        <div id="view-calendar-container" class="hidden bg-white p-6 rounded-lg shadow-md">
+            <!-- 月曆導航列 -->
+            <div class="flex justify-between items-center mb-6">
+                <button onclick="changeMonth(-1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">◀ 上個月</button>
+                <h2 id="calendar-month-title" class="text-xl font-bold text-gray-800">2026年 9月</h2>
+                <button onclick="changeMonth(1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">下個月 ▶</button>
+            </div>
+            <!-- 星期標頭 -->
+            <div class="grid grid-cols-7 gap-2 text-center font-bold text-gray-500 mb-2">
+                <div class="text-red-500">日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-blue-500">六</div>
+            </div>
+            <!-- 月曆格子本體 -->
+            <div id="calendar-grid" class="grid grid-cols-7 gap-2">
+                <!-- 動態生成日曆格子 -->
+            </div>
+        </div>
     </div>
 
-    <!-- 引入 Firebase 模組 (改為動態安全載入架構) -->
+    <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
-        // 1. 先將畫面基礎功能載入（就算 Firebase 當機，日期與畫面仍會正常顯示）
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
 
         let currentInventory = [];
         let db, inventoryCol, firestoreMethods;
+        let currentView = 'list'; // 預設視圖：list 或 calendar
+        
+        // 月曆目前顯示的年月（預設為今天所在的年月）
+        let calendarYear = today.getFullYear();
+        let calendarMonth = today.getMonth();
 
-        // 狀態計算邏輯
+        // 切換視圖主函式
+        window.switchView = function(viewType) {
+            currentView = viewType;
+            const listContainer = document.getElementById('view-list-container');
+            const calContainer = document.getElementById('view-calendar-container');
+            const btnList = document.getElementById('btn-view-list');
+            const btnCal = document.getElementById('btn-view-calendar');
+            const searchBox = document.getElementById('search-box-container');
+
+            if (viewType === 'list') {
+                listContainer.classList.remove('hidden');
+                calContainer.classList.add('hidden');
+                searchBox.classList.remove('hidden');
+                btnList.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                btnCal.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+                renderTable();
+            } else {
+                listContainer.classList.add('hidden');
+                calContainer.classList.remove('hidden');
+                searchBox.classList.add('hidden');
+                btnCal.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600";
+                btnList.className = "flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800";
+                renderCalendar();
+            }
+        };
+
         function calculateStatus(expiryDateStr) {
             const expiryDate = new Date(expiryDateStr);
             expiryDate.setHours(0, 0, 0, 0);
@@ -95,14 +162,23 @@
             return { diffDays, status, rowClass };
         }
 
-        // 渲染表格邏輯
-        function renderTable(data) {
+        // 渲染列表視圖
+        function renderTable() {
             const tbody = document.getElementById('inventory-list');
+            const keyword = document.getElementById('search-input').value.trim().toLowerCase();
             tbody.innerHTML = '';
+
+            let filteredData = currentInventory.filter(item => item.name.toLowerCase().includes(keyword));
+            filteredData.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+
+            document.getElementById('item-count-text').textContent = `顯示 ${filteredData.length} / 共 ${currentInventory.length} 項商品`;
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">沒有找到符合的商品資料</td></tr>`;
+                return;
+            }
             
-            data.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
-            
-            data.forEach(item => {
+            filteredData.forEach(item => {
                 const { diffDays, status, rowClass } = calculateStatus(item.expiry);
                 let statusIcon = status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
 
@@ -128,7 +204,90 @@
             });
         }
 
-        // 2. 嘗試動態連線至 Firebase
+        // 渲染月曆視圖
+        function renderCalendar() {
+            document.getElementById('calendar-month-title').textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+
+            // 取得當月第一天是星期幾、當月總天數
+            const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+            const totalDays = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+            // 將商品依照「YYYY-MM-DD」格式分類對應到日曆天數
+            const expiryMap = {};
+            currentInventory.forEach(item => {
+                if (!expiryMap[item.expiry]) {
+                    expiryMap[item.expiry] = [];
+                }
+                expiryMap[item.expiry].push(item);
+            });
+
+            // 填入上個月的空白格子
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = "h-28 bg-gray-50 rounded-lg border border-transparent";
+                grid.appendChild(emptyCell);
+            }
+
+            // 填入當月每一天
+            for (let day = 1; day <= totalDays; day++) {
+                const monthStr = String(calendarMonth + 1).padStart(2, '0');
+                const dayStr = String(day).padStart(2, '0');
+                const dateKey = `${calendarYear}-${monthStr}-${dayStr}`;
+
+                const cell = document.createElement('div');
+                cell.className = "h-28 bg-white rounded-lg border border-gray-200 p-2 overflow-y-auto flex flex-col justify-between";
+
+                // 檢查是否為今天
+                const isToday = (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate());
+                
+                let dayHeaderClass = "font-bold text-sm mb-1 flex justify-between items-center";
+                if (isToday) {
+                    dayHeaderClass += " text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded";
+                } else {
+                    dayHeaderClass += " text-gray-700";
+                }
+
+                let htmlContent = `<div class="${dayHeaderClass}"><span>${day}</span>`;
+                if (expiryMap[dateKey] && expiryMap[dateKey].length > 0) {
+                    htmlContent += `<span class="bg-red-100 text-red-600 text-[10px] px-1 rounded-full">${expiryMap[dateKey].length}項到期</span>`;
+                }
+                htmlContent += `</div>`;
+
+                // 渲染當天到期的商品標籤
+                htmlContent += `<div class="space-y-1">`;
+                if (expiryMap[dateKey]) {
+                    expiryMap[dateKey].forEach(item => {
+                        htmlContent += `<div class="bg-red-50 border border-red-200 text-red-700 text-xs px-1.5 py-0.5 rounded truncate" title="${item.name} (數量: ${item.quantity})">⚠️ ${item.name} (${item.quantity}個)</div>`;
+                    });
+                }
+                htmlContent += `</div>`;
+
+                cell.innerHTML = htmlContent;
+                grid.appendChild(cell);
+            }
+        }
+
+        // 月曆換月按鈕
+        window.changeMonth = function(direction) {
+            calendarMonth += direction;
+            if (calendarMonth > 11) {
+                calendarMonth = 0;
+                calendarYear++;
+            } else if (calendarMonth < 0) {
+                calendarMonth = 11;
+                calendarYear--;
+            }
+            renderCalendar();
+        };
+
+        // 搜尋輸入監聽
+        document.getElementById('search-input').addEventListener('input', function() {
+            if (currentView === 'list') renderTable();
+        });
+
+        // 雲端資料同步監聽
         try {
             document.getElementById('sync-status').textContent = '連線中...';
             document.getElementById('sync-status').className = 'bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse';
@@ -151,13 +310,18 @@
             db = firestore.getFirestore(app);
             inventoryCol = firestore.collection(db, "inventory");
 
-            // 監聽 Firestore 即時變化
             firestore.onSnapshot(inventoryCol, (snapshot) => {
                 currentInventory = [];
                 snapshot.forEach((docSnap) => {
                     currentInventory.push({ id: docSnap.id, ...docSnap.data() });
                 });
-                renderTable(currentInventory);
+                
+                // 根據目前所在視圖進行刷新
+                if (currentView === 'list') {
+                    renderTable();
+                } else {
+                    renderCalendar();
+                }
                 
                 document.getElementById('sync-status').textContent = '✅ 已連線';
                 document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold';
@@ -165,17 +329,14 @@
                 console.error("Firestore 權限錯誤: ", error);
                 document.getElementById('sync-status').textContent = '⚠️ 權限錯誤';
                 document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
-                alert("連接資料庫被拒絕！\n\n這通常是因為資料庫的「安全規則 (Rules)」設定未開放。請至 Firebase 控制台 -> Firestore Database -> Rules，將規則改為:\nallow read, write: if true;");
             });
 
         } catch (e) {
             console.error("Firebase 載入崩潰: ", e);
             document.getElementById('sync-status').textContent = '❌ 載入失敗';
             document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
-            alert("網頁無法載入資料庫，請檢查以下兩點：\n1. 您的瀏覽器是否裝有「擋廣告套件」阻擋了 Google 連線。\n2. 您的網路連線是否正常。\n\n詳細錯誤訊息：" + e.message);
         }
 
-        // 綁定按鈕動作
         window.updateQuantity = async function(id, currentQty, delta) {
             if (!db) return alert("連線異常，無法更新資料");
             let newQty = currentQty + delta;
