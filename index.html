@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (雲端商品庫版)</title>
+    <title>超市商品效期管理系統 (相機掃描升級版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入條碼掃描專用函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -14,7 +13,6 @@
 <body class="bg-gray-100 p-8">
 
     <div class="max-w-6xl mx-auto">
-        <!-- 頂部標題與狀態 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期與商品庫系統</h1>
@@ -28,7 +26,6 @@
             </div>
         </div>
 
-        <!-- 視圖切換與搜尋列 -->
         <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
             <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
                 <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 庫存清單視圖</button>
@@ -37,32 +34,31 @@
 
             <div class="w-full md:w-80 relative" id="search-box-container">
                 <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
-                <input type="text" id="search-input" placeholder="快速搜尋商品名稱或條碼..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
+                <input type="text" id="search-input" placeholder="快速搜尋庫存清單..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
             </div>
         </div>
 
-        <!-- 新增商品表單 (支援條碼庫對應) -->
-        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8 relative">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
-                <div class="flex gap-2">
-                    <button type="button" onclick="startScanner()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
-                        📷 掃描條碼帶入
-                    </button>
-                </div>
+                <button type="button" onclick="toggleScanner()" id="scanner-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
+                    📷 開啟相機掃描條碼
+                </button>
             </div>
 
-            <!-- 相機掃描即時預畫面框 -->
-            <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center">
-                <div id="reader" class="w-full rounded overflow-hidden"></div>
+            <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center shadow-inner">
+                <p class="text-xs text-gray-500 mb-2">請將商品的條碼對準下方掃描框</p>
+                <div id="reader" class="w-full rounded overflow-hidden border"></div>
                 <button type="button" onclick="stopScanner()" class="mt-3 bg-red-500 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-red-600 transition">關閉相機</button>
             </div>
 
-            <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end">
-                <div class="flex-1 w-full">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (掃描條碼或手動輸入)</label>
-                    <input type="text" id="item-name" required placeholder="例如：榛果牛奶巧克力片 100g" class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+            <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end relative">
+                <div class="flex-1 w-full relative">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 (可掃描條碼或打字搜尋主檔)</label>
+                    <input type="text" id="item-name" autocomplete="off" required placeholder="掃描條碼或輸入關鍵字..." class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                     <input type="hidden" id="item-barcode" value="">
+                    
+                    <div id="suggestions-box" class="hidden absolute left-0 right-0 top-16 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto"></div>
                 </div>
                 <div class="w-full md:w-32">
                     <label class="block text-sm font-medium text-gray-700 mb-1">數量</label>
@@ -76,11 +72,10 @@
             </form>
         </div>
 
-        <!-- 視圖 A：列表清單容器 -->
         <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
                 <span id="item-count-text">共載入 0 項商品</span>
-                <span>💡 提示：掃描已知條碼系統將自動帶入商品主檔名稱</span>
+                <span>💡 提示：點擊數量按鈕可直接增減庫存</span>
             </div>
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
@@ -94,12 +89,10 @@
                     </tr>
                 </thead>
                 <tbody id="inventory-list" class="divide-y divide-gray-200">
-                    <!-- 動態載入 -->
-                </tbody>
+                    </tbody>
             </table>
         </div>
 
-        <!-- 視圖 B：效期月曆容器 -->
         <div id="view-calendar-container" class="hidden bg-white p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <button onclick="changeMonth(-1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">◀ 上個月</button>
@@ -119,21 +112,19 @@
         </div>
     </div>
 
-    <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
 
         let currentInventory = [];
-        let productDatabase = {}; // 商品主檔對應字典 (Barcode -> Name)
+        let productDatabase = {};
         let db, inventoryCol, productsCol, firestoreMethods;
         let currentView = 'list'; 
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
         let html5QrCode = null;
 
-        // 預設商品主檔資料庫 (當雲端尚無資料時自動初始化)
         const defaultProducts = {
             "7315122013870": "榛果牛奶巧克力片 100g",
             "7315122013122": "牛奶巧克力片 100g",
@@ -148,47 +139,108 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 📷 啟動相機掃描條碼並比對商品資料庫
-        window.startScanner = function() {
+        // 📷 開啟/關閉相機掃描條碼
+        window.toggleScanner = async function() {
             const container = document.getElementById('scanner-container');
-            container.classList.remove('hidden');
-
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
+            if (!container.classList.contains('hidden')) {
+                stopScanner();
+                return;
             }
 
-            html5QrCode.start(
-                { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 150 } },
-                (decodedText) => {
-                    // 掃描成功後，比對資料庫
-                    const matchedName = productDatabase[decodedText] || `未知商品 (條碼: ${decodedText})`;
-                    document.getElementById('item-name').value = matchedName;
-                    document.getElementById('item-barcode').value = decodedText;
-                    
-                    if (productDatabase[decodedText]) {
-                        alert(`✅ 成功識別商品：\n${matchedName}`);
-                    } else {
-                        alert(`⚠️ 掃描到新條碼：${decodedText}\n已自動填入代碼，請手動輸入商品名稱完成建檔！`);
+            container.classList.remove('hidden');
+            document.getElementById('scanner-btn').textContent = "🔴 關閉相機";
+
+            try {
+                if (!html5QrCode) {
+                    html5QrCode = new Html5Qrcode("reader");
+                }
+
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    { 
+                        fps: 15, 
+                        qrbox: { width: 260, height: 140 },
+                        aspectRatio: 1.0
+                    },
+                    (decodedText) => {
+                        // 掃描成功！比對商品主檔
+                        const matchedName = productDatabase[decodedText] || `新商品 (條碼: ${decodedText})`;
+                        document.getElementById('item-name').value = matchedName;
+                        document.getElementById('item-barcode').value = decodedText;
+                        
+                        if (productDatabase[decodedText]) {
+                            alert(`✅ 成功辨識商品：\n${matchedName}`);
+                        } else {
+                            alert(`⚠️ 掃描到新條碼：${decodedText}\n已自動填入代碼，請確認品名後直接新增！`);
+                        }
+                        stopScanner();
+                    },
+                    (errorMessage) => {
+                        // 掃描中尋找條碼（略過不計錯以保持流暢）
                     }
-                    stopScanner();
-                },
-                (errorMessage) => {}
-            ).catch(err => {
-                alert("無法啟動相機！請確認相機權限是否已開啟。");
+                );
+            } catch (err) {
+                console.error("相機啟動失敗：", err);
+                alert("無法啟動相機！請確認：\n1. 瀏覽器已授權相機權限。\n2. 網址為 https:// 安全連線。\n3. 相機未被其他應用程式佔用。");
                 stopScanner();
-            });
+            }
         };
 
         window.stopScanner = function() {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('scanner-container').classList.add('hidden');
-                }).catch(err => {});
+                    document.getElementById('scanner-btn').textContent = "📷 開啟相機掃描條碼";
+                }).catch(err => {
+                    document.getElementById('scanner-container').classList.add('hidden');
+                    document.getElementById('scanner-btn').textContent = "📷 開啟相機掃描條碼";
+                });
             } else {
                 document.getElementById('scanner-container').classList.add('hidden');
+                document.getElementById('scanner-btn').textContent = "📷 開啟相機掃描條碼";
             }
         };
+
+        // 💡 智慧聯想輸入框監聽
+        const nameInput = document.getElementById('item-name');
+        const suggestionsBox = document.getElementById('suggestions-box');
+
+        nameInput.addEventListener('input', function() {
+            const keyword = this.value.trim().toLowerCase();
+            suggestionsBox.innerHTML = '';
+            
+            if (keyword.length === 0) {
+                suggestionsBox.classList.add('hidden');
+                return;
+            }
+
+            const matches = Object.entries(productDatabase).filter(([barcode, name]) => {
+                return name.toLowerCase().includes(keyword) || barcode.toLowerCase().includes(keyword);
+            });
+
+            if (matches.length > 0) {
+                suggestionsBox.classList.remove('hidden');
+                matches.forEach(([barcode, name]) => {
+                    const div = document.createElement('div');
+                    div.className = "px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b flex justify-between items-center";
+                    div.innerHTML = `<span class="font-medium text-gray-800">${name}</span><span class="text-xs text-gray-400">條碼: ${barcode}</span>`;
+                    div.onclick = function() {
+                        nameInput.value = name;
+                        document.getElementById('item-barcode').value = barcode;
+                        suggestionsBox.classList.add('hidden');
+                    };
+                    suggestionsBox.appendChild(div);
+                });
+            } else {
+                suggestionsBox.classList.add('hidden');
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!nameInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
+                suggestionsBox.classList.add('hidden');
+            }
+        });
 
         window.switchView = function(viewType) {
             currentView = viewType;
@@ -338,7 +390,6 @@
             if (currentView === 'list') renderTable();
         });
 
-        // 連線 Firebase 與商品主檔
         try {
             document.getElementById('sync-status').textContent = '連線中...';
             document.getElementById('sync-status').className = 'bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse';
@@ -362,10 +413,8 @@
             inventoryCol = firestore.collection(db, "inventory");
             productsCol = firestore.collection(db, "products");
 
-            // 1. 同步載入商品主檔資料庫
             firestore.onSnapshot(productsCol, (snapshot) => {
                 if (snapshot.empty) {
-                    // 若雲端主檔為空，自動寫入預設商品
                     for (const [barcode, name] of Object.entries(defaultProducts)) {
                         firestore.addDoc(productsCol, { barcode, name });
                     }
@@ -380,7 +429,6 @@
                 }
             });
 
-            // 2. 同步載入庫存即時清單
             firestore.onSnapshot(inventoryCol, (snapshot) => {
                 currentInventory = [];
                 snapshot.forEach((docSnap) => {
@@ -433,7 +481,6 @@
             document.body.removeChild(link);
         };
 
-        // 新增庫存（若掃描到新條碼自動寫入商品主檔）
         document.getElementById('add-item-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             if (!db) return alert("連線異常，無法新增資料");
@@ -442,7 +489,6 @@
             const quantity = parseInt(document.getElementById('item-quantity').value, 10);
             const expiry = document.getElementById('item-date').value;
             
-            // 寫入庫存清單
             await firestoreMethods.addDoc(inventoryCol, {
                 name: name,
                 barcode: barcode || "",
@@ -450,7 +496,6 @@
                 expiry: expiry
             });
 
-            // 如果是透過新掃描且主檔沒有的條碼，自動擴充到商品主檔中
             if (barcode && !productDatabase[barcode]) {
                 await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
             }
