@@ -1,45 +1,54 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" class="">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (企業財務與通報旗艦版)</title>
+    <title>超市商品效期管理系統 (極致旗艦版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入條碼掃描與 Chart.js 視覺化圖表庫 -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <!-- 引入條碼掃描、Chart.js 視覺化圖表與 JsBarcode 條碼生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         @media print {
             .no-print { display: none !important; }
-            body { background: white; padding: 0; }
-            .shadow-md, .shadow-sm { box-shadow: none !important; }
+            body { background: white !important; color: black !important; padding: 0; }
+            .shadow-md, .shadow-sm, .shadow-xl { box-shadow: none !important; }
         }
     </style>
 </head>
-<body class="bg-gray-100 p-8">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-8 transition-colors duration-200">
 
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-7xl mx-auto">
         <!-- 頂部標題與狀態 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 no-print">
             <div class="flex items-center gap-3">
-                <h1 class="text-3xl font-bold text-gray-800">📦 效期與商品庫系統</h1>
-                <span id="sync-status" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
+                <h1 class="text-3xl font-bold text-gray-800 dark:text-white">📦 效期與商品庫系統</h1>
+                <span id="sync-status" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
+                <button onclick="toggleDarkMode()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition">
+                    🌙 <span id="dark-mode-text">深色模式</span>
+                </button>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                <div class="text-gray-500 text-sm mr-2">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
+                <div class="text-gray-500 dark:text-gray-400 text-sm mr-2">今日日期：<span id="today-date" class="font-semibold text-gray-700 dark:text-gray-200"></span></div>
                 <button onclick="shareToLine()" class="bg-emerald-600 text-white px-3 py-2 rounded-md hover:bg-emerald-700 transition text-sm font-medium shadow-sm flex items-center gap-1">
-                    💬 LINE 彙整通報
+                    💬 LINE 通報
                 </button>
                 <button onclick="window.print()" class="bg-gray-700 text-white px-3 py-2 rounded-md hover:bg-gray-800 transition text-sm font-medium shadow-sm">
                     🖨️ 列印巡查單
                 </button>
                 <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="importCSV(event)">
                 <button onclick="document.getElementById('csv-file-input').click()" class="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition text-sm font-medium shadow-sm">
-                    📤 批次匯入 CSV
+                    📤 匯入 CSV
                 </button>
                 <button onclick="exportToCSV()" class="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm font-medium shadow-sm">
-                    📥 匯出 CSV 報表
+                    📥 匯出 CSV
                 </button>
             </div>
         </div>
@@ -52,48 +61,47 @@
 
         <!-- 📊 營運數據與財務儀表板 (Stats & Asset Dashboard) -->
         <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-4 no-print">
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
                 <span class="text-[11px] font-semibold text-gray-400 uppercase">總庫存件數</span>
-                <span id="stat-total-qty" class="text-xl font-bold text-gray-800 mt-1">0 件</span>
+                <span id="stat-total-qty" class="text-xl font-bold text-gray-800 dark:text-white mt-1">0 件</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-red-500 flex flex-col justify-between">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-red-500 flex flex-col justify-between">
                 <span class="text-[11px] font-semibold text-red-500 uppercase">🔴 屆期 (&lt;14天)</span>
-                <span id="stat-red-count" class="text-xl font-bold text-red-600 mt-1">0 項</span>
+                <span id="stat-red-count" class="text-xl font-bold text-red-600 dark:text-red-400 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-yellow-500 flex flex-col justify-between">
-                <span class="text-[11px] font-semibold text-yellow-600 uppercase">🟡 警告 (&lt;30天)</span>
-                <span id="stat-yellow-count" class="text-xl font-bold text-yellow-600 mt-1">0 項</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-yellow-500 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 uppercase">🟡 警告 (&lt;30天)</span>
+                <span id="stat-yellow-count" class="text-xl font-bold text-yellow-600 dark:text-yellow-400 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-green-500 flex flex-col justify-between">
-                <span class="text-[11px] font-semibold text-green-600 uppercase">🟢 安全 (&ge;30天)</span>
-                <span id="stat-green-count" class="text-xl font-bold text-green-600 mt-1">0 項</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-green-500 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-green-600 dark:text-green-400 uppercase">🟢 安全 (&ge;30天)</span>
+                <span id="stat-green-count" class="text-xl font-bold text-green-600 dark:text-green-400 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-purple-500 flex flex-col justify-between">
-                <span class="text-[11px] font-semibold text-purple-600 uppercase">⚠️ 低庫存 (&le;2)</span>
-                <span id="stat-low-count" class="text-xl font-bold text-purple-600 mt-1">0 項</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-purple-500 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-purple-600 dark:text-purple-400 uppercase">⚠️ 低庫存 (&le;2)</span>
+                <span id="stat-low-count" class="text-xl font-bold text-purple-600 dark:text-purple-400 mt-1">0 項</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-gray-400 flex flex-col justify-between">
-                <span class="text-[11px] font-semibold text-gray-500 uppercase">⚪️ 已售完 (=0)</span>
-                <span id="stat-soldout-count" class="text-xl font-bold text-gray-600 mt-1">0 項</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-gray-400 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase">⚪️ 已售完 (=0)</span>
+                <span id="stat-soldout-count" class="text-xl font-bold text-gray-600 dark:text-gray-300 mt-1">0 項</span>
             </div>
-            <!-- 財務估算指標 -->
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-indigo-500 flex flex-col justify-between col-span-1 md:col-span-1">
-                <span class="text-[11px] font-semibold text-indigo-600 uppercase">💵 庫存總金額</span>
-                <span id="stat-total-value" class="text-xl font-bold text-indigo-700 mt-1">$0</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-indigo-500 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">💵 庫存總金額</span>
+                <span id="stat-total-value" class="text-xl font-bold text-indigo-700 dark:text-indigo-300 mt-1">$0</span>
             </div>
-            <div class="bg-white p-3 rounded-lg shadow-md border-l-4 border-rose-600 flex flex-col justify-between col-span-1 md:col-span-1">
-                <span class="text-[11px] font-semibold text-rose-600 uppercase">💸 報廢風險金額</span>
-                <span id="stat-risk-value" class="text-xl font-bold text-rose-700 mt-1">$0</span>
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border-l-4 border-rose-600 flex flex-col justify-between">
+                <span class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase">💸 報廢風險金額</span>
+                <span id="stat-risk-value" class="text-xl font-bold text-rose-700 dark:text-rose-400 mt-1">$0</span>
             </div>
         </div>
 
         <!-- 📈 Chart.js 動態視覺化統計圖表面板 -->
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6 no-print">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md mb-6 no-print transition-colors">
             <div class="flex justify-between items-center mb-3">
-                <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                <h3 class="text-sm font-bold text-gray-700 dark:text-gray-200 flex items-center gap-2">
                     📈 全店庫存效期健康度視覺化分佈圖
                 </h3>
-                <button onclick="toggleChartPanel()" id="chart-toggle-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                <button onclick="toggleChartPanel()" id="chart-toggle-btn" class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
                     收合圖表 ▲
                 </button>
             </div>
@@ -102,18 +110,18 @@
             </div>
         </div>
 
-        <!-- 視圖切換與搜尋/排序/分類列 -->
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-3 items-center justify-between no-print">
-            <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto overflow-x-auto">
-                <button id="btn-view-list" onclick="switchView('list')" class="px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap">📋 庫存清單</button>
-                <button id="btn-view-calendar" onclick="switchView('calendar')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap">📅 效期月曆</button>
-                <button id="btn-view-logs" onclick="switchView('logs')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap">📜 異動日誌</button>
+        <!-- 視圖切換與搜尋/排序/分類/語音列 -->
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-3 items-center justify-between no-print transition-colors">
+            <div class="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg w-full md:w-auto overflow-x-auto">
+                <button id="btn-view-list" onclick="switchView('list')" class="px-4 py-2 rounded-md font-medium text-sm transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap">📋 庫存清單</button>
+                <button id="btn-view-calendar" onclick="switchView('calendar')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap">📅 效期月曆</button>
+                <button id="btn-view-logs" onclick="switchView('logs')" class="px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap">📜 異動日誌</button>
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                 <!-- 大類分類選單 -->
-                <select id="category-filter-select" onchange="renderTable()" class="border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white">
-                    <option value="ALL">🏷️ 所有商品類別</option>
+                <select id="category-filter-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md py-2 px-3 text-sm focus:ring-blue-500">
+                    <option value="ALL">🏷️ 所有類別</option>
                     <option value="烘焙麵包">🥐 烘焙麵包</option>
                     <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                     <option value="零食餅乾">🍪 零食餅乾</option>
@@ -123,39 +131,42 @@
                 </select>
 
                 <!-- 排序選單 -->
-                <select id="sort-select" onchange="renderTable()" class="border border-gray-300 rounded-md py-2 px-3 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white">
-                    <option value="EXPIRY_ASC">⏳ 排序：效期最近優先</option>
-                    <option value="QTY_ASC">📉 排序：數量少到多</option>
-                    <option value="QTY_DESC">📈 排序：數量多到少</option>
-                    <option value="PRICE_DESC">💰 排序：單價高到低</option>
-                    <option value="NAME_ASC">🔤 排序：商品名稱</option>
+                <select id="sort-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md py-2 px-3 text-sm focus:ring-blue-500">
+                    <option value="EXPIRY_ASC">⏳ 效期最近優先</option>
+                    <option value="QTY_ASC">📉 數量少到多</option>
+                    <option value="QTY_DESC">📈 數量多到少</option>
+                    <option value="PRICE_DESC">💰 單價高到低</option>
+                    <option value="NAME_ASC">🔤 商品名稱</option>
                 </select>
 
-                <!-- 搜尋框 -->
-                <div class="relative w-full sm:w-56">
+                <!-- 搜尋框與語音搜尋 -->
+                <div class="relative w-full sm:w-60 flex items-center">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
-                    <input type="text" id="search-input" placeholder="搜尋商品名稱..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <input type="text" id="search-input" placeholder="搜尋商品名稱..." class="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:ring-blue-500 text-sm">
+                    <button type="button" onclick="startVoiceSearch()" title="語音搜尋" class="absolute right-2 text-gray-400 hover:text-blue-500">
+                        🎙️
+                    </button>
                 </div>
             </div>
         </div>
 
         <!-- 新增商品表單 -->
-        <div id="add-item-card" class="bg-white p-6 rounded-lg shadow-md mb-8 relative no-print">
+        <div id="add-item-card" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8 relative no-print transition-colors">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
+                <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-200">新增盤點商品</h2>
                 <div class="flex gap-2">
                     <button type="button" onclick="startNFCScan()" class="bg-teal-600 text-white px-3 py-2 rounded-md hover:bg-teal-700 transition font-medium text-sm flex items-center gap-1 shadow-sm">
-                        📡 NFC 觸碰感應
+                        📡 NFC 感應
                     </button>
                     <button type="button" onclick="toggleScanner()" id="scanner-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
-                        📷 相機掃描條碼
+                        📷 相機掃碼
                     </button>
                 </div>
             </div>
 
             <!-- ⚡ 常用商品快速點選面板 -->
-            <div class="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
-                <p class="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+            <div class="mb-6 p-4 bg-blue-50 dark:bg-gray-700 border border-blue-100 dark:border-gray-600 rounded-lg">
+                <p class="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2 flex items-center gap-1">
                     ⚡ 常用商品快速點選（點擊即可一鍵帶入名稱與條碼）：
                 </p>
                 <div id="quick-buttons-grid" class="flex flex-wrap gap-2">
@@ -164,12 +175,12 @@
             </div>
 
             <!-- 相機即時預畫面框 -->
-            <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center shadow-inner">
+            <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 dark:bg-gray-700 border rounded-lg max-w-md mx-auto text-center shadow-inner">
                 <div class="flex justify-between items-center mb-2">
-                    <p class="text-xs text-gray-500">請將商品的條碼對準下方掃描框</p>
-                    <label class="flex items-center gap-1 text-xs font-bold text-indigo-700 cursor-pointer">
+                    <p class="text-xs text-gray-500 dark:text-gray-300">請將條碼對準掃描框</p>
+                    <label class="flex items-center gap-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer">
                         <input type="checkbox" id="continuous-scan-toggle" class="rounded text-indigo-600">
-                        ⚡ 連續盤點模式 (掃描不關閉)
+                        ⚡ 連續盤點 (語音播報)
                     </label>
                 </div>
                 <div id="reader" class="w-full rounded overflow-hidden border"></div>
@@ -178,30 +189,30 @@
 
             <form id="add-item-form" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end relative">
                 <div class="md:col-span-4 relative">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">商品名稱 (打字聯想/掃碼/NFC)</label>
-                    <input type="text" id="item-name" autocomplete="off" required placeholder="點選上方常用或輸入..." class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">商品名稱 (打字聯想/掃碼/NFC)</label>
+                    <input type="text" id="item-name" autocomplete="off" required placeholder="點選上方常用或輸入..." class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                     <input type="hidden" id="item-barcode" value="">
                     
-                    <div id="suggestions-box" class="hidden absolute left-0 right-0 top-16 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto"></div>
+                    <div id="suggestions-box" class="hidden absolute left-0 right-0 top-16 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto"></div>
                 </div>
                 <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">商品類別</label>
-                    <select id="item-category" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">商品類別</label>
+                    <select id="item-category" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                         <option value="零食餅乾">🍪 零食餅乾</option>
                         <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                         <option value="烘焙麵包">🥐 烘焙麵包</option>
                         <option value="熟食冷凍">🍱 熟食冷凍</option>
-                        <option value="罐頭乾貨">🥫 罐頭乾貨</option>
+                        <option value="罐頭乾貨">罐 罐頭乾貨</option>
                         <option value="其他">📦 其他</option>
                     </select>
                 </div>
                 <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">單價 ($)</label>
-                    <input type="number" id="item-price" min="0" value="50" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">單價 ($)</label>
+                    <input type="number" id="item-price" min="0" value="50" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
                 <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">促銷標籤</label>
-                    <select id="item-discount" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">促銷標籤</label>
+                    <select id="item-discount" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                         <option value="">正價商品</option>
                         <option value="8折">🏷️ 8折</option>
                         <option value="7折">🏷️ 7折</option>
@@ -210,12 +221,12 @@
                     </select>
                 </div>
                 <div class="md:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">數量</label>
-                    <input type="number" id="item-quantity" required min="0" value="1" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">數量</label>
+                    <input type="number" id="item-quantity" required min="0" value="1" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
                 <div class="md:col-span-3">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">有效期限 (Best Before)</label>
-                    <input type="date" id="item-date" required class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">有效期限 (Best Before)</label>
+                    <input type="date" id="item-date" required class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
                 </div>
                 <div class="md:col-span-2">
                     <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition font-medium text-sm">新增至庫存</button>
@@ -224,79 +235,107 @@
         </div>
 
         <!-- 視圖 A：列表清單容器 -->
-        <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
+        <div id="view-list-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto transition-colors">
             <!-- 🎛️ 預警狀態篩選頁籤 -->
-            <div class="p-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-3 no-print">
+            <div class="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-wrap justify-between items-center gap-3 no-print">
                 <div class="flex flex-wrap gap-1.5 text-xs font-medium">
                     <button onclick="setFilter('ALL')" id="filter-btn-ALL" class="px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-sm font-bold">全部商品</button>
-                    <button onclick="setFilter('RED')" id="filter-btn-RED" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-700">🔴 屆期 (&lt;14天)</button>
-                    <button onclick="setFilter('YELLOW')" id="filter-btn-YELLOW" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-yellow-100 hover:text-yellow-800">🟡 警告 (&lt;30天)</button>
-                    <button onclick="setFilter('GREEN')" id="filter-btn-GREEN" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-700">🟢 安全 (&ge;30天)</button>
-                    <button onclick="setFilter('EXPIRED')" id="filter-btn-EXPIRED" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300">⚫️ 已過期</button>
-                    <button onclick="setFilter('LOW_STOCK')" id="filter-btn-LOW_STOCK" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-purple-100 hover:text-purple-700">⚠️ 低庫存 (1-2件)</button>
-                    <button onclick="setFilter('SOLD_OUT')" id="filter-btn-SOLD_OUT" class="px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 hover:text-gray-900">⚪️ 已售完 (=0)</button>
+                    <button onclick="setFilter('RED')" id="filter-btn-RED" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-red-100">🔴 屆期 (&lt;14天)</button>
+                    <button onclick="setFilter('YELLOW')" id="filter-btn-YELLOW" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-yellow-100">🟡 警告 (&lt;30天)</button>
+                    <button onclick="setFilter('GREEN')" id="filter-btn-GREEN" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-green-100">🟢 安全 (&ge;30天)</button>
+                    <button onclick="setFilter('EXPIRED')" id="filter-btn-EXPIRED" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">⚫️ 已過期</button>
+                    <button onclick="setFilter('LOW_STOCK')" id="filter-btn-LOW_STOCK" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-purple-100">⚠️ 低庫存 (&le;2)</button>
+                    <button onclick="setFilter('SOLD_OUT')" id="filter-btn-SOLD_OUT" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">⚪️ 已售完 (=0)</button>
                 </div>
-                <span id="item-count-text" class="text-xs text-gray-500">共載入 0 項商品</span>
+                <span id="item-count-text" class="text-xs text-gray-500 dark:text-gray-400">共載入 0 項商品</span>
             </div>
 
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
-                <thead class="bg-gray-50 border-b">
+                <thead class="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                     <tr>
-                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 類別與促銷</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">單價</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">有效期限</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">剩餘天數</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700 text-center">剩餘數量</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">小計金額</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">狀態預警</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700 text-center no-print">操作</th>
+                        <th class="px-4 py-4 text-center no-print">
+                            <input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)" class="rounded text-blue-600">
+                        </th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 類別與促銷</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">單價</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">有效期限</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">剩餘天數</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200 text-center">剩餘數量</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">小計金額</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">狀態預警</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200 text-center no-print">操作</th>
                     </tr>
                 </thead>
-                <tbody id="inventory-list" class="divide-y divide-gray-200">
+                <tbody id="inventory-list" class="divide-y divide-gray-200 dark:divide-gray-700">
                     <!-- 動態載入 -->
                 </tbody>
             </table>
         </div>
 
         <!-- 視圖 B：效期月曆容器 -->
-        <div id="view-calendar-container" class="hidden bg-white p-6 rounded-lg shadow-md">
+        <div id="view-calendar-container" class="hidden bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md transition-colors">
             <div class="flex justify-between items-center mb-6">
-                <button onclick="changeMonth(-1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">◀ 上個月</button>
-                <h2 id="calendar-month-title" class="text-xl font-bold text-gray-800">2026年 9月</h2>
-                <button onclick="changeMonth(1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">下個月 ▶</button>
+                <button onclick="changeMonth(-1)" class="px-4 py-2 border dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200">◀ 上個月</button>
+                <h2 id="calendar-month-title" class="text-xl font-bold text-gray-800 dark:text-white">2026年 9月</h2>
+                <button onclick="changeMonth(1)" class="px-4 py-2 border dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200">下個月 ▶</button>
             </div>
-            <div class="flex flex-wrap gap-4 mb-4 text-xs font-medium text-gray-600 bg-gray-50 p-3 rounded-md border">
+            <div class="flex flex-wrap gap-4 mb-4 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-md border dark:border-gray-600">
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-red-500 rounded-full inline-block"></span> 🔴 屆期 (&lt;14天)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-yellow-500 rounded-full inline-block"></span> 🟡 警告 (&lt;30天)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-green-500 rounded-full inline-block"></span> 🟢 安全 (30天以上)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-gray-400 rounded-full inline-block"></span> ⚫️ 已過期</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-gray-200 rounded-full inline-block"></span> ⚪️ 已售完</div>
             </div>
-            <div class="grid grid-cols-7 gap-2 text-center font-bold text-gray-500 mb-2">
+            <div class="grid grid-cols-7 gap-2 text-center font-bold text-gray-500 dark:text-gray-400 mb-2">
                 <div class="text-red-500">日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-blue-500">六</div>
             </div>
             <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
         </div>
 
         <!-- 視圖 C：異動日誌與稽核紀錄容器 -->
-        <div id="view-logs-container" class="hidden bg-white rounded-lg shadow-md overflow-x-auto">
-            <div class="p-4 border-b bg-gray-50 flex justify-between items-center text-sm text-gray-500">
+        <div id="view-logs-container" class="hidden bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto transition-colors">
+            <div class="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
                 <span id="log-count-text">共記錄 0 筆異動足跡</span>
                 <span>🔒 系統自動稽核紀錄，確保庫存帳務透明</span>
             </div>
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
-                <thead class="bg-gray-50 border-b">
+                <thead class="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                     <tr>
-                        <th class="px-6 py-4 font-semibold text-gray-700">操作時間</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">異動類型</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱</th>
-                        <th class="px-6 py-4 font-semibold text-gray-700">變動詳情</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">操作時間</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">異動類型</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">商品名稱</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700 dark:text-gray-200">變動詳情</th>
                     </tr>
                 </thead>
-                <tbody id="logs-list" class="divide-y divide-gray-200">
+                <tbody id="logs-list" class="divide-y divide-gray-200 dark:divide-gray-700">
                     <!-- 動態載入 -->
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- 📥 浮動批量操作工具列 (Batch Action Bar) -->
+    <div id="batch-action-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-4 border border-gray-700 no-print">
+        <span class="text-xs font-bold text-blue-400">已選擇 <span id="selected-count">0</span> 項商品</span>
+        <div class="h-4 w-px bg-gray-700"></div>
+        <button onclick="batchSetDiscount('5折')" class="bg-orange-600 hover:bg-orange-700 text-white text-xs px-3 py-1.5 rounded-full font-medium transition">🔥 批次打5折</button>
+        <button onclick="batchSetDiscount('7折')" class="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-1.5 rounded-full font-medium transition">🏷️ 批次打7折</button>
+        <button onclick="batchSetSoldOut()" class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-full font-medium transition">⚪️ 批次售完</button>
+        <button onclick="batchDelete()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-full font-medium transition">❌ 批次刪除</button>
+    </div>
+
+    <!-- 🏷️ 條碼標籤產生器彈窗 (Barcode Label Modal) -->
+    <div id="barcode-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 no-print">
+        <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full text-center border">
+            <h3 id="modal-item-name" class="font-bold text-lg text-gray-800 mb-1">商品名稱</h3>
+            <p id="modal-item-info" class="text-xs text-gray-500 mb-4">單價: $100 | 有效期限: 2026-10-01</p>
+            <div class="bg-white p-3 border rounded mb-4 flex justify-center">
+                <svg id="barcode-svg"></svg>
+            </div>
+            <div class="flex justify-center gap-3">
+                <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700">🖨️ 列印此標籤</button>
+                <button onclick="closeBarcodeModal()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded text-sm font-medium hover:bg-gray-400">關閉</button>
+            </div>
         </div>
     </div>
 
@@ -314,6 +353,7 @@
 
         let currentInventory = [];
         let currentLogs = [];
+        let selectedItemIds = new Set();
         let productDatabase = {};
         let db, inventoryCol, productsCol, logsCol, firestoreMethods;
         let currentView = 'list'; 
@@ -335,6 +375,43 @@
             "7310532106501": "Estrella 洋芋片",
             "S1696203": "WASA 香草起司夾心餅乾 30g",
             "471000001": "鮮乳 (全脂)"
+        };
+
+        // 🌙 深色模式切換
+        window.toggleDarkMode = function() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            document.getElementById('dark-mode-text').textContent = isDark ? '淺色模式' : '深色模式';
+        };
+
+        // 🔊 語音朗讀合成
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.1;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 🎙️ 語音搜尋
+        window.startVoiceSearch = function() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'zh-TW';
+                recognition.start();
+
+                showToast("🎙️ 正在聆聽，請說出商品名稱...");
+
+                recognition.onresult = function(event) {
+                    const text = event.results[0][0].transcript;
+                    document.getElementById('search-input').value = text;
+                    showToast(`🎙️ 語音搜尋：${text}`);
+                    renderTable();
+                };
+            } else {
+                alert("⚠️ 您的瀏覽器不支援語音辨識功能。");
+            }
         };
 
         function showToast(msg) {
@@ -360,7 +437,104 @@
             }
         }
 
-        // 💬 LINE 彙整通報發送功能
+        // 🏷️ 生成與開啟條碼貼紙彈窗
+        window.openBarcodeModal = function(name, barcode, price, expiry) {
+            const modal = document.getElementById('barcode-modal');
+            document.getElementById('modal-item-name').textContent = name;
+            document.getElementById('modal-item-info').textContent = `售價: $${price} | 有效期限: ${expiry}`;
+
+            const displayBarcode = barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000);
+
+            JsBarcode("#barcode-svg", displayBarcode, {
+                format: "CODE128",
+                width: 2,
+                height: 60,
+                displayValue: true,
+                fontSize: 14
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
+        window.closeBarcodeModal = function() {
+            const modal = document.getElementById('barcode-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        };
+
+        // ☑️ 批量選擇邏輯
+        window.toggleSelectAll = function(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            selectedItemIds.clear();
+
+            checkboxes.forEach(cb => {
+                cb.checked = masterCheckbox.checked;
+                if (masterCheckbox.checked) {
+                    selectedItemIds.add(cb.value);
+                }
+            });
+            updateBatchActionBar();
+        };
+
+        window.toggleItemSelection = function(id) {
+            if (selectedItemIds.has(id)) {
+                selectedItemIds.delete(id);
+            } else {
+                selectedItemIds.add(id);
+            }
+            updateBatchActionBar();
+        };
+
+        function updateBatchActionBar() {
+            const bar = document.getElementById('batch-action-bar');
+            const countText = document.getElementById('selected-count');
+            countText.textContent = selectedItemIds.size;
+
+            if (selectedItemIds.size > 0) {
+                bar.classList.remove('hidden');
+            } else {
+                bar.classList.add('hidden');
+            }
+        }
+
+        window.batchSetDiscount = async function(discountTag) {
+            if (!db) return;
+            for (const id of selectedItemIds) {
+                const itemRef = firestoreMethods.doc(db, "inventory", id);
+                await firestoreMethods.updateDoc(itemRef, { discount: discountTag });
+            }
+            showToast(`🏷️ 已將 ${selectedItemIds.size} 項商品套用 ${discountTag} 折扣`);
+            await logActivity("🏷️ 批次折扣", "多項商品", `套用 ${discountTag} 標籤至 ${selectedItemIds.size} 筆庫存`);
+            selectedItemIds.clear();
+            updateBatchActionBar();
+        };
+
+        window.batchSetSoldOut = async function() {
+            if (!db) return;
+            for (const id of selectedItemIds) {
+                const itemRef = firestoreMethods.doc(db, "inventory", id);
+                await firestoreMethods.updateDoc(itemRef, { quantity: 0 });
+            }
+            showToast(`⚪️ 已將 ${selectedItemIds.size} 項商品標示為售完`);
+            await logActivity("⚪️ 批次售完", "多項商品", `將 ${selectedItemIds.size} 筆庫存數量歸零`);
+            selectedItemIds.clear();
+            updateBatchActionBar();
+        };
+
+        window.batchDelete = async function() {
+            if (!db) return;
+            if (confirm(`確定要刪除選取的那 ${selectedItemIds.size} 項商品嗎？`)) {
+                for (const id of selectedItemIds) {
+                    await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+                }
+                showToast(`❌ 已批次刪除 ${selectedItemIds.size} 項商品`);
+                await logActivity("❌ 批次刪除", "多項商品", `移除 ${selectedItemIds.size} 筆庫存紀錄`);
+                selectedItemIds.clear();
+                updateBatchActionBar();
+            }
+        };
+
         window.shareToLine = function() {
             let alertItems = [];
             currentInventory.forEach(item => {
@@ -391,7 +565,6 @@
             window.open(`https://line.me/R/msg/text/?${encodedMsg}`, '_blank');
         };
 
-        // 📡 Web NFC 感應盤點 (支援 Android Chrome)
         window.startNFCScan = async function() {
             if ('NDEFReader' in window) {
                 try {
@@ -408,13 +581,14 @@
                             }
                         }
                         document.getElementById('item-name').value = recordText;
+                        speakText(`感應成功，${recordText}`);
                         showToast(`📡 NFC 感應成功：${recordText}`);
                     });
                 } catch (error) {
-                    alert("NFC 啟動失敗或權限被拒絕：" + error);
+                    alert("NFC 啟動失敗：" + error);
                 }
             } else {
-                alert("⚠️ 您的裝置或瀏覽器不支援 Web NFC 功能 (請使用 Android 設備上的 Google Chrome 瀏覽器)。");
+                alert("⚠️ 您的裝置不支援 Web NFC (請使用 Android 上的 Chrome 瀏覽器)。");
             }
         };
 
@@ -440,7 +614,7 @@
                     if (type === filterType) {
                         btn.className = "px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-sm font-bold";
                     } else {
-                        btn.className = "px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300";
+                        btn.className = "px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300";
                     }
                 }
             });
@@ -593,7 +767,7 @@
             for (const [barcode, name] of Object.entries(productDatabase)) {
                 const btn = document.createElement('button');
                 btn.type = "button";
-                btn.className = "bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition shadow-sm";
+                btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition shadow-sm";
                 btn.textContent = name;
                 btn.onclick = function() {
                     document.getElementById('item-name').value = name;
@@ -642,11 +816,14 @@
                             const existingItem = currentInventory.find(item => item.barcode === decodedText || item.name === matchedName);
                             if (existingItem) {
                                 await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
+                                speakText(`${matchedName}，數量加一`);
                                 showToast(`⚡ [連續盤點] ${matchedName} 數量 +1 (現有: ${existingItem.quantity + 1})`);
                             } else {
-                                showToast(`🔔 掃描到新品項：${matchedName}，請確認期限後點擊新增！`);
+                                speakText(`掃描到新商品，${matchedName}`);
+                                showToast(`🔔 掃描到新品項：${matchedName}`);
                             }
                         } else {
+                            speakText(`辨識成功，${matchedName}`);
                             showToast(`✅ 成功辨識條碼：${matchedName}`);
                             stopScanner();
                         }
@@ -664,14 +841,14 @@
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('scanner-container').classList.add('hidden');
-                    document.getElementById('scanner-btn').textContent = "📷 相機掃描條碼";
+                    document.getElementById('scanner-btn').textContent = "📷 相機掃碼";
                 }).catch(err => {
                     document.getElementById('scanner-container').classList.add('hidden');
-                    document.getElementById('scanner-btn').textContent = "📷 相機掃描條碼";
+                    document.getElementById('scanner-btn').textContent = "📷 相機掃碼";
                 });
             } else {
                 document.getElementById('scanner-container').classList.add('hidden');
-                document.getElementById('scanner-btn').textContent = "📷 相機掃描條碼";
+                document.getElementById('scanner-btn').textContent = "📷 相機掃碼";
             }
         };
 
@@ -695,8 +872,8 @@
                 suggestionsBox.classList.remove('hidden');
                 matches.forEach(([barcode, name]) => {
                     const div = document.createElement('div');
-                    div.className = "px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b flex justify-between items-center";
-                    div.innerHTML = `<span class="font-medium text-gray-800">${name}</span><span class="text-xs text-gray-400">條碼: ${barcode}</span>`;
+                    div.className = "px-4 py-2 hover:bg-blue-50 dark:hover:bg-gray-600 cursor-pointer text-sm border-b dark:border-gray-600 flex justify-between items-center";
+                    div.innerHTML = `<span class="font-medium text-gray-800 dark:text-white">${name}</span><span class="text-xs text-gray-400">條碼: ${barcode}</span>`;
                     div.onclick = function() {
                         nameInput.value = name;
                         document.getElementById('item-barcode').value = barcode;
@@ -727,9 +904,9 @@
             const btnLogs = document.getElementById('btn-view-logs');
             const searchBox = document.getElementById('search-box-container');
 
-            btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
-            btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
-            btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800 whitespace-nowrap";
+            btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
+            btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
+            btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
 
             if (viewType === 'list') {
                 listContainer.classList.remove('hidden');
@@ -737,7 +914,7 @@
                 logsContainer.classList.add('hidden');
                 addItemCard.classList.remove('hidden');
                 searchBox.classList.remove('hidden');
-                btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
+                btnList.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
                 renderTable();
             } else if (viewType === 'calendar') {
                 listContainer.classList.add('hidden');
@@ -745,7 +922,7 @@
                 logsContainer.classList.add('hidden');
                 addItemCard.classList.remove('hidden');
                 searchBox.classList.add('hidden');
-                btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
+                btnCal.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
                 renderCalendar();
             } else if (viewType === 'logs') {
                 listContainer.classList.add('hidden');
@@ -753,7 +930,7 @@
                 logsContainer.classList.remove('hidden');
                 addItemCard.classList.add('hidden');
                 searchBox.classList.add('hidden');
-                btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600 whitespace-nowrap";
+                btnLogs.className = "px-4 py-2 rounded-md font-medium text-sm transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
                 renderLogs();
             }
         };
@@ -764,8 +941,8 @@
                 return {
                     diffDays: 0,
                     status: '已售完',
-                    rowClass: 'bg-gray-100 text-gray-400 opacity-75',
-                    badgeClass: 'bg-gray-200 border-gray-300 text-gray-600',
+                    rowClass: 'bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-75',
+                    badgeClass: 'bg-gray-200 dark:bg-gray-700 border-gray-300 text-gray-600 dark:text-gray-300',
                     statusCategory: 'SOLD_OUT'
                 };
             }
@@ -777,13 +954,13 @@
             
             let status = '', rowClass = '', badgeClass = '', statusCategory = '';
             if (diffDays < 0) {
-                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700'; statusCategory = 'EXPIRED';
+                status = '已過期'; rowClass = 'bg-gray-200 dark:bg-gray-800 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700'; statusCategory = 'EXPIRED';
             } else if (diffDays < 14) {
-                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900'; badgeClass = 'bg-red-50 border-red-200 text-red-700'; statusCategory = 'RED';
+                status = '屆期 (<14天)'; rowClass = 'bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200'; badgeClass = 'bg-red-50 border-red-200 text-red-700'; statusCategory = 'RED';
             } else if (diffDays < 30) {
-                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800'; statusCategory = 'YELLOW';
+                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-900 dark:text-yellow-200'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800'; statusCategory = 'YELLOW';
             } else {
-                status = '安全'; rowClass = 'bg-green-50 text-green-900'; badgeClass = 'bg-green-50 border-green-200 text-green-700'; statusCategory = 'GREEN';
+                status = '安全'; rowClass = 'bg-green-50 dark:bg-green-950/40 text-green-900 dark:text-green-200'; badgeClass = 'bg-green-50 border-green-200 text-green-700'; statusCategory = 'GREEN';
             }
             return { diffDays, status, rowClass, badgeClass, statusCategory };
         }
@@ -832,7 +1009,7 @@
             document.getElementById('item-count-text').textContent = `顯示 ${filteredData.length} / 共 ${currentInventory.length} 項商品`;
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
                 return;
             }
             
@@ -842,6 +1019,7 @@
                 const price = parseFloat(item.price) || 0;
                 const subtotal = qty * price;
                 const categoryText = item.category || '其他';
+                const isChecked = selectedItemIds.has(item.id);
 
                 let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
                 const isLowStock = (qty > 0 && qty <= 2);
@@ -862,30 +1040,34 @@
                 const tr = document.createElement('tr');
                 tr.className = `hover:bg-opacity-80 transition ${rowClass}`;
                 tr.innerHTML = `
+                    <td class="px-4 py-4 text-center no-print">
+                        <input type="checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} onclick="toggleItemSelection('${item.id}')" class="item-checkbox rounded text-blue-600">
+                    </td>
                     <td class="px-6 py-4 font-medium flex items-center">
                         <div>
-                            <div class="font-bold text-gray-800">${item.name}</div>
-                            <div class="text-xs text-gray-500">類別: ${categoryText}</div>
+                            <div class="font-bold text-gray-800 dark:text-gray-100">${item.name}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">類別: ${categoryText}</div>
                         </div>
                         ${discountBadge}
                         ${lowStockBadge}
                     </td>
-                    <td class="px-6 py-4 font-mono text-gray-700">$${price}</td>
+                    <td class="px-6 py-4 font-mono text-gray-700 dark:text-gray-300">$${price}</td>
                     <td class="px-6 py-4">${item.expiry}</td>
                     <td class="px-6 py-4 font-bold">${qty === 0 ? '-' : (diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays + ' 天')}</td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex items-center justify-center gap-3">
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm no-print">-</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-8 h-8 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 font-bold text-gray-600 dark:text-gray-200 shadow-sm no-print">-</button>
                             <span class="w-8 text-center font-bold text-lg">${item.quantity}</span>
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded hover:bg-gray-100 font-bold text-gray-600 shadow-sm no-print">+</button>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-8 h-8 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 font-bold text-gray-600 dark:text-gray-200 shadow-sm no-print">+</button>
                         </div>
                     </td>
-                    <td class="px-6 py-4 font-bold font-mono text-indigo-700">$${subtotal.toLocaleString('zh-TW')}</td>
+                    <td class="px-6 py-4 font-bold font-mono text-indigo-700 dark:text-indigo-400">$${subtotal.toLocaleString('zh-TW')}</td>
                     <td class="px-6 py-4 font-semibold">${statusIcon}${status}</td>
                     <td class="px-6 py-4 text-center no-print">
-                        <div class="flex justify-center gap-2">
-                            ${qty > 0 ? `<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 hover:text-gray-900 font-medium bg-gray-100 px-2.5 py-1 rounded shadow-sm border border-gray-300 hover:bg-gray-200 text-xs">售完</button>` : ''}
-                            <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-2.5 py-1 rounded shadow-sm border border-red-200 hover:bg-red-50 text-xs">刪除</button>
+                        <div class="flex justify-center gap-1.5">
+                            <button onclick="openBarcodeModal('${item.name.replace(/'/g, "\\'")}', '${item.barcode || ''}', ${price}, '${item.expiry}')" class="text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-50 px-2 py-1 rounded shadow-sm border border-indigo-200 text-xs">🏷️ 標籤</button>
+                            ${qty > 0 ? `<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 hover:text-gray-900 font-medium bg-gray-100 px-2 py-1 rounded shadow-sm border border-gray-300 text-xs">售完</button>` : ''}
+                            <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-2 py-1 rounded shadow-sm border border-red-200 text-xs">刪除</button>
                         </div>
                     </td>
                 `;
@@ -916,12 +1098,12 @@
                 else if (log.type?.includes('匯入')) badgeColor = "bg-purple-100 text-purple-800";
 
                 const tr = document.createElement('tr');
-                tr.className = "hover:bg-gray-50 transition";
+                tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
                 tr.innerHTML = `
-                    <td class="px-6 py-4 text-xs text-gray-500 font-mono">${timeStr}</td>
+                    <td class="px-6 py-4 text-xs text-gray-500 dark:text-gray-400 font-mono">${timeStr}</td>
                     <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor}">${log.type}</span></td>
-                    <td class="px-6 py-4 font-medium text-gray-800">${log.itemName}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">${log.detail}</td>
+                    <td class="px-6 py-4 font-medium text-gray-800 dark:text-gray-200">${log.itemName}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">${log.detail}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -943,7 +1125,7 @@
 
             for (let i = 0; i < firstDayIndex; i++) {
                 const emptyCell = document.createElement('div');
-                emptyCell.className = "h-32 bg-gray-50 rounded-lg border border-transparent";
+                emptyCell.className = "h-32 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-transparent";
                 grid.appendChild(emptyCell);
             }
 
@@ -953,16 +1135,16 @@
                 const dateKey = `${calendarYear}-${monthStr}-${dayStr}`;
 
                 const cell = document.createElement('div');
-                cell.className = "h-32 bg-white rounded-lg border border-gray-200 p-2 overflow-y-auto flex flex-col justify-between";
+                cell.className = "h-32 bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 p-2 overflow-y-auto flex flex-col justify-between";
 
                 const isToday = (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate());
                 let dayHeaderClass = "font-bold text-sm mb-1 flex justify-between items-center";
-                if (isToday) dayHeaderClass += " text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded";
-                else dayHeaderClass += " text-gray-700";
+                if (isToday) dayHeaderClass += " text-blue-600 bg-blue-50 dark:bg-blue-900/40 px-1.5 py-0.5 rounded";
+                else dayHeaderClass += " text-gray-700 dark:text-gray-300";
 
                 let htmlContent = `<div class="${dayHeaderClass}"><span>${day}</span>`;
                 if (expiryMap[dateKey] && expiryMap[dateKey].length > 0) {
-                    htmlContent += `<span class="bg-gray-100 text-gray-600 text-[10px] px-1 rounded-full font-medium">${expiryMap[dateKey].length}項</span>`;
+                    htmlContent += `<span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-1 rounded-full font-medium">${expiryMap[dateKey].length}項</span>`;
                 }
                 htmlContent += `</div><div class="space-y-1">`;
 
