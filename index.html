@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統 (AI OCR 旗艦版)</title>
+    <title>超市商品效期與進銷存損益管理系統 (FIFO 旗艦版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -43,7 +43,7 @@
                     <!-- 🔌 實體條碼槍狀態燈 -->
                     <span class="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 border border-emerald-300 dark:border-emerald-700">
                         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        🔌 條碼槍監聽中
+                        🔌 條碼槍監聽中 (FIFO模式)
                     </span>
                     <!-- 🔔 瀏覽器系統推播預警按鈕 -->
                     <button id="push-notify-btn" onclick="requestNotificationPermission()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 hover:bg-gray-300">
@@ -92,7 +92,7 @@
 
         <!-- 列印專用抬頭 (僅列印時顯示) -->
         <div class="hidden print:block mb-4 border-b pb-2">
-            <h1 class="text-xl font-bold">門市即期品與庫存每日巡查單</h1>
+            <h1 class="text-xl font-bold">門市即期品與庫存每日巡查單 (FIFO 多批號版)</h1>
             <p class="text-xs text-gray-600">列印日期：<span id="print-date"></span></p>
         </div>
 
@@ -162,7 +162,7 @@
             <div class="flex justify-between items-center cursor-pointer" onclick="toggleAddForm()">
                 <div class="flex items-center gap-2">
                     <span class="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 p-1.5 rounded-lg text-xs font-bold">➕</span>
-                    <h2 class="text-sm font-bold text-gray-800 dark:text-gray-100">新增盤點商品</h2>
+                    <h2 class="text-sm font-bold text-gray-800 dark:text-gray-100">新增盤點商品 (FIFO 多批號)</h2>
                     <span id="add-form-toggle-text" class="text-xs text-gray-400 font-normal">(點擊展開)</span>
                 </div>
                 <div class="flex gap-2" onclick="event.stopPropagation()">
@@ -190,7 +190,7 @@
                         <p class="text-xs text-gray-500 dark:text-gray-300">將條碼對準相機</p>
                         <label class="flex items-center gap-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer">
                             <input type="checkbox" id="continuous-scan-toggle" class="rounded text-indigo-600">
-                            ⚡ 連續盤點 (語音播報)
+                            ⚡ 連續盤點 (FIFO 智慧扣庫)
                         </label>
                     </div>
                     <div id="reader" class="w-full rounded overflow-hidden border"></div>
@@ -220,6 +220,10 @@
                     <div class="md:col-span-2">
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">🚚 供應商</label>
                         <input type="text" id="item-supplier" placeholder="例: 統一" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">🏷️ 批號 (Batch No.)</label>
+                        <input type="text" id="item-batch" placeholder="例: LOT-202609" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-1">
                         <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">📍 貨架</label>
@@ -251,7 +255,6 @@
                     <div class="md:col-span-2">
                         <div class="flex justify-between items-center mb-1">
                             <label class="block text-[11px] font-semibold text-gray-700 dark:text-gray-300">有效期限</label>
-                            <!-- 📸 AI OCR 辨識按鈕 -->
                             <button type="button" onclick="document.getElementById('ocr-file-input').click()" class="text-[10px] bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded font-bold hover:bg-purple-200 transition flex items-center gap-0.5 shadow-sm">
                                 📸 AI 辨識
                             </button>
@@ -260,7 +263,7 @@
                         <input type="date" id="item-date" required class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5 text-xs focus:ring-blue-500">
                     </div>
                     <div class="md:col-span-9 mt-1">
-                        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition font-medium text-xs">確認新增至庫存</button>
+                        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition font-medium text-xs">確認新增至批號庫存</button>
                     </div>
                 </form>
             </div>
@@ -295,7 +298,7 @@
 
                 <!-- 排序選單 -->
                 <select id="sort-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded py-1.5 px-2 focus:ring-blue-500">
-                    <option value="EXPIRY_ASC">⏳ 效期最近</option>
+                    <option value="EXPIRY_ASC">⏳ 效期最近 (FIFO)</option>
                     <option value="PROFIT_DESC" class="manager-only hidden">💰 毛利高到低</option>
                     <option value="QTY_ASC">📉 數量少到多</option>
                     <option value="QTY_DESC">📈 數量多到少</option>
@@ -306,7 +309,7 @@
                 <!-- 搜尋框與語音搜尋 -->
                 <div class="relative flex-1 sm:w-48 flex items-center">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-gray-400">🔍</span>
-                    <input type="text" id="search-input" placeholder="搜尋品名/貨架..." class="w-full pl-8 pr-7 py-1.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-blue-500 text-xs">
+                    <input type="text" id="search-input" placeholder="搜尋品名/批號/貨架..." class="w-full pl-8 pr-7 py-1.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-blue-500 text-xs">
                     <button type="button" onclick="startVoiceSearch()" title="語音搜尋" class="absolute right-2 text-gray-400 hover:text-blue-500">
                         🎙️
                     </button>
@@ -337,7 +340,7 @@
                             <th class="px-3 py-2.5 text-center no-print">
                                 <input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)" class="rounded text-blue-600">
                             </th>
-                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 類別</th>
+                            <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">商品名稱 / 批號</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">🚚 廠商</th>
                             <th class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">📍 貨架</th>
                             <th id="th-price" class="px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200">單價 / 售價</th>
@@ -514,8 +517,6 @@
                 await worker.terminate();
 
                 const text = ret.data.text;
-                console.log("OCR 辨識原始文字：", text);
-
                 let foundDate = null;
                 const matchFull = text.match(/20\d{2}[-/.年\s]*[0-1]?\d[-/.月\s]*[0-3]?\d/);
                 if (matchFull) {
@@ -544,6 +545,33 @@
                 e.target.value = '';
             }
         };
+
+        // 🔌 FIFO 智慧條碼槍掃描處理 (自動鎖定該條碼最早到期的批次扣減)
+        async function handleBarcodeGunScan(barcode) {
+            const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
+            
+            // 尋找該條碼所有庫存 > 0 的批次，並依效期由舊到新排序 (FIFO)
+            const matchedBatches = currentInventory
+                .filter(item => (item.barcode === barcode || item.name === matchedName) && (parseInt(item.quantity) || 0) > 0)
+                .sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+
+            if (matchedBatches.length > 0) {
+                // 自動選取最早到期的批次 (FIFO)
+                const oldestBatch = matchedBatches[0];
+                await window.updateQuantity(oldestBatch.id, oldestBatch.name, oldestBatch.quantity, 1);
+                speakText(`FIFO：${matchedName}，批號 ${oldestBatch.batchNo||'預設'} 數量加一`);
+                showToast(`🔌 [FIFO 智慧扣庫] ${matchedName} (批號: ${oldestBatch.batchNo||'N/A'} | 效期: ${oldestBatch.expiry}) 數量 +1`);
+            } else {
+                // 若無庫存或新品，帶入表單新增
+                document.getElementById('item-barcode').value = barcode;
+                document.getElementById('item-name').value = matchedName;
+                document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`;
+                if (document.getElementById('add-form-content').classList.contains('hidden')) toggleAddForm();
+                speakText(`掃描新品：${matchedName}`);
+                showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
+                document.getElementById('item-quantity').focus();
+            }
+        }
 
         // 🔔 推播預警相關
         window.requestNotificationPermission = async function() {
@@ -643,12 +671,12 @@
 
         window.backupToJSON = function() {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const backupData = { version: "5.0_AI_OCR", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
+            const backupData = { version: "6.0_FIFO", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
             const jsonStr = JSON.stringify(backupData, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存全系統備份_${today.toISOString().split('T')[0]}.json`;
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存FIFO備份_${today.toISOString().split('T')[0]}.json`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            showToast("💾 全系統 JSON 災難備份檔匯出成功！");
+            showToast("💾 FIFO 全系統備份檔匯出成功！");
         };
 
         window.restoreFromJSON = function(e) {
@@ -658,12 +686,11 @@
             reader.onload = async function(evt) {
                 try {
                     const backupData = JSON.parse(evt.target.result);
-                    if (!confirm("⚠️ 警告：確定要進行災難還原嗎？系統將自動同步並寫入資料庫！")) { e.target.value = ''; return; }
-                    showToast("🔄 正在寫入並還原系統資料，請稍候...");
-                    let restoredInv = 0, restoredProd = 0;
-                    if (Array.isArray(backupData.inventory)) { for (const item of backupData.inventory) { const newItem = { ...item }; delete newItem.id; await firestoreMethods.addDoc(inventoryCol, newItem); restoredInv++; } }
-                    if (backupData.products) { for (const [barcode, name] of Object.entries(backupData.products)) { if (!productDatabase[barcode]) { await firestoreMethods.addDoc(productsCol, { barcode, name }); restoredProd++; } } }
-                    showToast(`✅ 災難還原完成！`); await logActivity("🔄 災難還原", "JSON全系統還原", `成功還原 ${restoredInv} 筆庫存`);
+                    if (!confirm("⚠️ 警告：確定要還原系統資料嗎？")) { e.target.value = ''; return; }
+                    showToast("🔄 正在還原資料...");
+                    let count = 0;
+                    if (Array.isArray(backupData.inventory)) { for (const item of backupData.inventory) { const newItem = { ...item }; delete newItem.id; await firestoreMethods.addDoc(inventoryCol, newItem); count++; } }
+                    showToast(`✅ 還原完成，共 ${count} 筆！`); await logActivity("🔄 還原", "FIFO備份", `還原 ${count} 筆`);
                 } catch (err) { alert("❌ 解析失敗：" + err.message); } finally { e.target.value = ''; }
             };
             reader.readAsText(file);
@@ -685,20 +712,6 @@
             }
             if (e.key.length === 1) barcodeGunBuffer += e.key;
         });
-
-        async function handleBarcodeGunScan(barcode) {
-            const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
-            const existingItem = currentInventory.find(item => item.barcode === barcode || item.name === matchedName);
-            if (existingItem) {
-                await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
-                speakText(`條碼槍：${matchedName}，數量加一`); showToast(`🔌 [條碼槍] ${matchedName} 數量 +1`);
-            } else {
-                document.getElementById('item-barcode').value = barcode; document.getElementById('item-name').value = matchedName;
-                if (document.getElementById('add-form-content').classList.contains('hidden')) toggleAddForm();
-                speakText(`掃描新品：${matchedName}`); showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
-                document.getElementById('item-quantity').focus();
-            }
-        }
 
         function getEffectiveUnitPrice(price, discount) {
             if (!discount) return price;
@@ -734,10 +747,10 @@
         window.generatePurchaseOrder = function() {
             let lowStockItems = currentInventory.filter(item => (parseInt(item.quantity) || 0) <= 2);
             if (lowStockItems.length === 0) return alert("🎉 當前所有商品庫存充裕，無須採購補貨！");
-            let csvContent = "﻿商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,預估進價,預估總進價成本\n";
+            let csvContent = "﻿商品名稱,類別,供應商,批號,貨架位置,當前庫存,建議採購量,預估進價,總成本\n";
             lowStockItems.forEach(item => {
                 const qty = parseInt(item.quantity) || 0; const cost = parseFloat(item.cost) || 0; const suggestedQty = Math.max(10 - qty, 5);
-                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫商品"},${item.supplier||"通用廠商"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}\n`;
+                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫"},${item.supplier||"廠商"},${item.batchNo||"N/A"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}\n`;
             });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市補貨採購建議表_${today.toISOString().split('T')[0]}.csv`;
@@ -766,8 +779,8 @@
             try { await firestoreMethods.addDoc(logsCol, { type: type, itemName: itemName, detail: detail, timestamp: new Date().toISOString() }); } catch (err) { console.error("日誌失敗", err); }
         }
 
-        window.openBarcodeModal = function(name, barcode, price, expiry) {
-            const modal = document.getElementById('barcode-modal'); document.getElementById('modal-item-name').textContent = name;
+        window.openBarcodeModal = function(name, barcode, price, expiry, batch) {
+            const modal = document.getElementById('barcode-modal'); document.getElementById('modal-item-name').textContent = `${name} [批號: ${batch||'N/A'}]`;
             document.getElementById('modal-item-info').textContent = `售價: $${price} | 有效期限: ${expiry}`;
             JsBarcode("#barcode-svg", barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000), { format: "CODE128", width: 2, height: 50, displayValue: true, fontSize: 12 });
             modal.classList.remove('hidden'); modal.classList.add('flex');
@@ -803,7 +816,7 @@
 
         window.batchDelete = async function() {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！"); if (!db) return;
-            if (confirm(`確定刪除 ${selectedItemIds.size} 項商品嗎？`)) {
+            if (confirm(`確定刪除 ${selectedItemIds.size} 項批次商品嗎？`)) {
                 for (const id of selectedItemIds) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); }
                 showToast(`❌ 刪除成功`); await logActivity("❌ 批次刪除", "多項商品", `刪除`); selectedItemIds.clear(); updateBatchActionBar();
             }
@@ -812,10 +825,10 @@
         window.shareToLine = function() {
             let alertItems = currentInventory.filter(item => { const qty = parseInt(item.quantity) || 0; return qty > 0 && Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)) < 14; });
             if (alertItems.length === 0) return alert("🎉 沒有商品需要通報！");
-            let msg = `📢【即期通報】${today.toLocaleDateString('zh-TW')}\n---------------\n`;
+            let msg = `📢【FIFO 即期通報】${today.toLocaleDateString('zh-TW')}\n---------------\n`;
             alertItems.forEach((item, index) => {
                 const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
-                msg += `${index + 1}. ${item.name} | ${item.qty}件 | ${diff < 0 ? '過期' : '剩'+diff+'天'}\n`;
+                msg += `${index + 1}. ${item.name} [批:${item.batchNo||'N/A'}] | ${item.quantity}件 | ${diff < 0 ? '已過期' : '剩'+diff+'天'}\n`;
             });
             window.open(`https://line.me/R/msg/text/?${encodeURIComponent(msg)}`, '_blank');
         };
@@ -888,10 +901,10 @@
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].trim().split(',').map(c => c.replace(/^"|"$/g, '').trim());
                     if (cols.length >= 2 && cols[0]) {
-                        await firestoreMethods.addDoc(inventoryCol, { name: cols[0], category: cols[1]||"常溫", supplier: cols[2]||"未指定", location: cols[3]||"", cost: parseFloat(cols[4])||35, price: parseFloat(cols[5])||50, discount: cols[6]||"", expiry: cols[7]||"", quantity: parseInt(cols[8])||1 }); c++;
+                        await firestoreMethods.addDoc(inventoryCol, { name: cols[0], category: cols[1]||"常溫", supplier: cols[2]||"未指定", batchNo: cols[3]||"LOT-CSV", location: cols[4]||"", cost: parseFloat(cols[5])||35, price: parseFloat(cols[6])||50, discount: cols[7]||"", expiry: cols[8]||"", quantity: parseInt(cols[9])||1 }); c++;
                     }
                 }
-                showToast(`✅ 匯入 ${c} 筆`); e.target.value = '';
+                showToast(`✅ 匯入 ${c} 筆批次商品`); e.target.value = '';
             };
             reader.readAsText(file);
         };
@@ -900,7 +913,7 @@
             const grid = document.getElementById('quick-buttons-grid'); grid.innerHTML = '';
             Object.entries(productDatabase).forEach(([b, n]) => {
                 const btn = document.createElement('button'); btn.type = "button"; btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium transition shadow-sm"; btn.textContent = n;
-                btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; }; grid.appendChild(btn);
+                btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`; }; grid.appendChild(btn);
             });
         }
 
@@ -914,12 +927,8 @@
                 await html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 240, height: 130 } }, async (decodedText) => {
                     if (decodedText === lastScanned && Date.now() - lastTime < 2000) return;
                     lastScanned = decodedText; lastTime = Date.now();
-                    const n = productDatabase[decodedText] || `條碼 (${decodedText})`;
-                    document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = decodedText;
-                    if (document.getElementById('continuous-scan-toggle').checked) {
-                        const item = currentInventory.find(i => i.barcode === decodedText || i.name === n);
-                        if (item) { await window.updateQuantity(item.id, item.name, item.quantity, 1); speakText(`${n} 加一`); showToast(`⚡ ${n} +1`); } else { speakText(`新商品 ${n}`); showToast(`🔔 新品：${n}`); }
-                    } else { speakText(`成功 ${n}`); showToast(`✅ 辨識：${n}`); stopScanner(); }
+                    await handleBarcodeGunScan(decodedText);
+                    if (!document.getElementById('continuous-scan-toggle').checked) stopScanner();
                 }, () => {});
             } catch (err) { alert("相機啟動失敗"); stopScanner(); }
         };
@@ -938,7 +947,7 @@
                 suggestionsBox.classList.remove('hidden');
                 matches.forEach(([b, n]) => {
                     const div = document.createElement('div'); div.className = "px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs border-b flex justify-between"; div.innerHTML = `<span>${n}</span><span class="text-gray-400">${b}</span>`;
-                    div.onclick = () => { nameInput.value = n; document.getElementById('item-barcode').value = b; suggestionsBox.classList.add('hidden'); }; suggestionsBox.appendChild(div);
+                    div.onclick = () => { nameInput.value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`; suggestionsBox.classList.add('hidden'); }; suggestionsBox.appendChild(div);
                 });
             } else suggestionsBox.classList.add('hidden');
         });
@@ -966,11 +975,12 @@
             const tbody = document.getElementById('inventory-list'); tbody.innerHTML = '';
             const k = document.getElementById('search-input').value.trim().toLowerCase(), s = document.getElementById('sort-select').value, c = document.getElementById('category-filter-select').value, sf = document.getElementById('supplier-filter-select').value;
             let fd = currentInventory.filter(item => {
-                if (!((item.name||'').toLowerCase().includes(k) || (item.location||'').toLowerCase().includes(k) || (item.supplier||'').toLowerCase().includes(k))) return false;
+                if (!((item.name||'').toLowerCase().includes(k) || (item.batchNo||'').toLowerCase().includes(k) || (item.location||'').toLowerCase().includes(k) || (item.supplier||'').toLowerCase().includes(k))) return false;
                 if (c !== 'ALL' && (item.category || '常溫商品') !== c) return false; if (sf !== 'ALL' && (item.supplier || '未指定') !== sf) return false;
                 const stat = calculateStatus(item.expiry, item.quantity);
                 if (currentStatusFilter === 'ALL') return true; if (currentStatusFilter === 'LOW_STOCK') return (parseInt(item.quantity)>0 && parseInt(item.quantity)<=2); return stat.statusCategory === currentStatusFilter;
             });
+            // 預設強制採用效期最近排序 (FIFO)
             fd.sort((a, b) => {
                 const qa=parseInt(a.quantity)||0, qb=parseInt(b.quantity)||0, pa=parseFloat(a.price)||0, pb=parseFloat(b.price)||0;
                 if (s === 'EXPIRY_ASC') return new Date(a.expiry) - new Date(b.expiry);
@@ -986,14 +996,19 @@
                 tbody.innerHTML += `
                     <tr class="hover:bg-opacity-80 transition ${rowClass}">
                         <td class="px-3 py-2 text-center no-print"><input type="checkbox" value="${item.id}" ${isChecked?'checked':''} onclick="toggleItemSelection('${item.id}')" class="item-checkbox"></td>
-                        <td class="px-4 py-2 font-medium"><div><div class="font-bold text-xs">${item.name}</div><div class="text-[10px] text-gray-500">${item.category||'常溫'}</div></div>
-                        ${item.discount&&q>0 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-100 text-purple-700">🏷️ ${item.discount}</span>`:''}
-                        ${q>0&&q<=2 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-600 text-white">⚠️低庫存</span>`:''}</td>
+                        <td class="px-4 py-2 font-medium">
+                            <div>
+                                <div class="font-bold text-xs">${item.name}</div>
+                                <div class="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">🏷️ 批號: ${item.batchNo || 'N/A'}</div>
+                            </div>
+                            ${item.discount&&q>0 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-100 text-purple-700">🏷️ ${item.discount}</span>`:''}
+                            ${q>0&&q<=2 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-600 text-white">⚠️低庫存</span>`:''}
+                        </td>
                         <td class="px-4 py-2 text-[11px]">🚚 ${item.supplier||'未指定'}</td>
                         <td class="px-4 py-2"><span class="bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">📍 ${item.location||''}</span></td>
                         <td class="px-4 py-2">${currentRole==='manager'?`<span class="text-gray-400 text-[10px]">$${c}/</span> <span class="font-bold text-indigo-600">$${p}</span>`:`<span class="font-bold text-indigo-600">$${p}</span>`}</td>
                         ${currentRole==='manager'?`<td class="manager-only px-4 py-2 ${ep-c>=0?'text-emerald-600':'text-rose-600 font-bold'}">${ep-c>=0?'+':''}$${Math.round(ep-c)}</td>`:''}
-                        <td class="px-4 py-2 text-[11px]">${item.expiry}</td>
+                        <td class="px-4 py-2 text-[11px] font-bold">${item.expiry}</td>
                         <td class="px-4 py-2 font-bold">${q===0?'-':(diffDays<0?'已過期 '+Math.abs(diffDays):diffDays+' 天')}</td>
                         <td class="px-4 py-2 text-center"><div class="flex items-center justify-center gap-2">
                             <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">-</button>
@@ -1002,7 +1017,7 @@
                         <td class="px-4 py-2 font-bold text-indigo-700">$${Math.round(q*ep).toLocaleString('zh-TW')}</td>
                         <td class="px-4 py-2">${(q===0)?'⚪️':diffDays<0?'⚫️':diffDays<14?'🔴':diffDays<30?'🟡':'🟢'} ${status}</td>
                         <td class="px-4 py-2 text-center no-print flex gap-1">
-                            <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
+                            <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}', '${item.batchNo||''}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
                             ${q>0?`<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
                             ${currentRole==='manager'?`<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
                         </td>
@@ -1032,7 +1047,7 @@
                 (expMap[dk]||[]).forEach(item => {
                     const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)), q = parseInt(item.quantity)||0;
                     const c = q===0 ? 'bg-gray-200' : diff<0 ? 'bg-gray-100' : diff<14 ? 'bg-red-100 text-red-800' : diff<30 ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800';
-                    html += `<div class="text-[9px] px-1 truncate rounded ${c}">${q===0?'⚪️':diff<0?'⚫️':diff<14?'🔴':diff<30?'🟡':'🟢'} ${item.name}</div>`;
+                    html += `<div class="text-[9px] px-1 truncate rounded ${c}">${q===0?'⚪️':diff<0?'⚫️':diff<14?'🔴':diff<30?'🟡':'🟢'} ${item.name} (${item.batchNo||'N/A'})</div>`;
                 });
                 grid.innerHTML += html + `</div></div>`;
             }
@@ -1095,26 +1110,27 @@
 
         window.deleteItem = async function(id, name) {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
-            if (confirm(`確定刪除「${name}」嗎？`)) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); showToast(`❌ 已刪除`); await logActivity("❌ 刪除", name, "移除"); }
+            if (confirm(`確定刪除「${name}」批次嗎？`)) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); showToast(`❌ 已刪除`); await logActivity("❌ 刪除", name, "移除批次"); }
         };
 
         window.exportToCSV = function() {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
-            let csvContent = "﻿商品名稱,類別,供應商,進價,售價,有效期限,數量\n";
-            currentInventory.forEach(item => { csvContent += `"${item.name}",${item.category||""},${item.supplier||""},${item.cost||0},${item.price||0},${item.expiry},${item.quantity}\n`; });
+            let csvContent = "﻿商品名稱,類別,供應商,批號,進價,售價,有效期限,數量\n";
+            currentInventory.forEach(item => { csvContent += `"${item.name}",${item.category||""},${item.supplier||""},${item.batchNo||""},${item.cost||0},${item.price||0},${item.expiry},${item.quantity}\n`; });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `商品報表.csv`;
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `FIFO商品批號報表.csv`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
         document.getElementById('add-item-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const q = parseInt(document.getElementById('item-quantity').value); const n = document.getElementById('item-name').value;
+            const bNo = document.getElementById('item-batch').value.trim() || `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`;
             await firestoreMethods.addDoc(inventoryCol, {
-                name: n, barcode: document.getElementById('item-barcode').value || "", category: document.getElementById('item-category').value || "常溫", supplier: document.getElementById('item-supplier').value || "", location: document.getElementById('item-location').value || "",
+                name: n, barcode: document.getElementById('item-barcode').value || "", batchNo: bNo, category: document.getElementById('item-category').value || "常溫", supplier: document.getElementById('item-supplier').value || "", location: document.getElementById('item-location').value || "",
                 cost: parseFloat(document.getElementById('item-cost').value) || 0, price: parseFloat(document.getElementById('item-price').value) || 0, discount: document.getElementById('item-discount').value || "", quantity: isNaN(q) ? 1 : q, expiry: document.getElementById('item-date').value
             });
-            showToast(`➕ 新增「${n}」`); await logActivity("➕ 新增", n, `數量: ${q}`);
+            showToast(`➕ 新增「${n}」批號: ${bNo}`); await logActivity("➕ 新增批次", n, `批號: ${bNo} | 數量: ${q}`);
             const b = document.getElementById('item-barcode').value; if (b && !productDatabase[b]) await firestoreMethods.addDoc(productsCol, { barcode: b, name: n });
             this.reset(); document.getElementById('item-barcode').value = ''; toggleAddForm();
         });
