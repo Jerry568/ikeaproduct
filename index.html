@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (極致旗艦版)</title>
+    <title>超市商品效期管理系統 (溫層與極致旗艦版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -119,13 +119,15 @@
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                <!-- 大類分類選單 -->
+                <!-- 大類分類選單 (包含常溫與冷凍) -->
                 <select id="category-filter-select" onchange="renderTable()" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md py-2 px-3 text-sm focus:ring-blue-500">
                     <option value="ALL">🏷️ 所有類別</option>
+                    <option value="常溫商品">🌡️ 常溫商品</option>
+                    <option value="冷凍食品">❄️ 冷凍食品</option>
                     <option value="烘焙麵包">🥐 烘焙麵包</option>
                     <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                     <option value="零食餅乾">🍪 零食餅乾</option>
-                    <option value="熟食冷凍">🍱 熟食冷凍</option>
+                    <option value="熟食冷凍">🍱 熟食調理</option>
                     <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                     <option value="其他">📦 其他品項</option>
                 </select>
@@ -198,11 +200,13 @@
                 <div class="md:col-span-2">
                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">商品類別</label>
                     <select id="item-category" class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md p-2 text-sm focus:ring-blue-500">
+                        <option value="常溫商品">🌡️ 常溫商品</option>
+                        <option value="冷凍食品">❄️ 冷凍食品</option>
                         <option value="零食餅乾">🍪 零食餅乾</option>
                         <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                         <option value="烘焙麵包">🥐 烘焙麵包</option>
-                        <option value="熟食冷凍">🍱 熟食冷凍</option>
-                        <option value="罐頭乾貨">罐 罐頭乾貨</option>
+                        <option value="熟食調理">🍱 熟食調理</option>
+                        <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                         <option value="其他">📦 其他</option>
                     </select>
                 </div>
@@ -377,13 +381,11 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 🌙 深色模式切換
         window.toggleDarkMode = function() {
             const isDark = document.documentElement.classList.toggle('dark');
             document.getElementById('dark-mode-text').textContent = isDark ? '淺色模式' : '深色模式';
         };
 
-        // 🔊 語音朗讀合成
         function speakText(text) {
             if ('speechSynthesis' in window) {
                 const utterance = new SpeechSynthesisUtterance(text);
@@ -393,7 +395,6 @@
             }
         }
 
-        // 🎙️ 語音搜尋
         window.startVoiceSearch = function() {
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -437,7 +438,6 @@
             }
         }
 
-        // 🏷️ 生成與開啟條碼貼紙彈窗
         window.openBarcodeModal = function(name, barcode, price, expiry) {
             const modal = document.getElementById('barcode-modal');
             document.getElementById('modal-item-name').textContent = name;
@@ -463,7 +463,6 @@
             modal.classList.remove('flex');
         };
 
-        // ☑️ 批量選擇邏輯
         window.toggleSelectAll = function(masterCheckbox) {
             const checkboxes = document.querySelectorAll('.item-checkbox');
             selectedItemIds.clear();
@@ -728,7 +727,7 @@
                     const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
                     if (cols.length >= 2) {
                         const name = cols[0];
-                        let discount = "", expiry = "", qty = 1, price = 50, category = "其他";
+                        let discount = "", expiry = "", qty = 1, price = 50, category = "常溫商品";
 
                         if (cols.length >= 5) {
                             discount = (cols[1] === "正價" || !cols[1]) ? "" : cols[1];
@@ -974,7 +973,7 @@
 
             let filteredData = currentInventory.filter(item => {
                 const nameMatch = item.name.toLowerCase().includes(keyword);
-                const categoryMatch = (categoryFilter === 'ALL' || (item.category || '其他') === categoryFilter);
+                const categoryMatch = (categoryFilter === 'ALL' || (item.category || '常溫商品') === categoryFilter);
                 const { statusCategory } = calculateStatus(item.expiry, item.quantity);
                 const qty = parseInt(item.quantity) || 0;
                 const isLowStock = (qty > 0 && qty <= 2);
@@ -1018,7 +1017,7 @@
                 const qty = parseInt(item.quantity) || 0;
                 const price = parseFloat(item.price) || 0;
                 const subtotal = qty * price;
-                const categoryText = item.category || '其他';
+                const categoryText = item.category || '常溫商品';
                 const isChecked = selectedItemIds.has(item.id);
 
                 let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
@@ -1289,7 +1288,7 @@
                 const { diffDays, status } = calculateStatus(item.expiry, item.quantity);
                 const safeName = `"${item.name.replace(/"/g, '""')}"`;
                 const discountText = item.discount || "正價";
-                const categoryText = item.category || "其他";
+                const categoryText = item.category || "常溫商品";
                 const price = parseFloat(item.price) || 0;
                 const qty = parseInt(item.quantity) || 0;
                 const subtotal = price * qty;
@@ -1319,7 +1318,7 @@
             await firestoreMethods.addDoc(inventoryCol, {
                 name: name,
                 barcode: barcode || "",
-                category: category || "其他",
+                category: category || "常溫商品",
                 price: price,
                 discount: discount || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
