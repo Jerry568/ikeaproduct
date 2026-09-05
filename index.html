@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>超市商品效期管理系統 (雲端即時版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入條碼掃描專用函式庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     </style>
@@ -28,26 +30,36 @@
 
         <!-- 視圖切換與搜尋列 -->
         <div class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
-            <!-- 視圖切換按鈕 -->
             <div class="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
                 <button id="btn-view-list" onclick="switchView('list')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition bg-white shadow-sm text-blue-600">📋 列表清單視圖</button>
                 <button id="btn-view-calendar" onclick="switchView('calendar')" class="flex-1 md:flex-none px-6 py-2 rounded-md font-medium text-sm transition text-gray-600 hover:text-gray-800">📅 效期月曆視圖</button>
             </div>
 
-            <!-- 搜尋框 (僅在列表模式顯眼) -->
             <div class="w-full md:w-80 relative" id="search-box-container">
                 <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">🔍</span>
-                <input type="text" id="search-input" placeholder="快速搜尋商品名稱..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
+                <input type="text" id="search-input" placeholder="快速搜尋商品名稱或條碼..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm">
             </div>
         </div>
 
-        <!-- 新增商品表單 -->
+        <!-- 新增商品表單 (加入相機掃描按鈕) -->
         <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-            <h2 class="text-xl font-semibold mb-4 text-gray-700">新增盤點商品</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-700">新增盤點商品</h2>
+                <button type="button" onclick="startScanner()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2 shadow-sm">
+                    📷 掃描商品條碼
+                </button>
+            </div>
+
+            <!-- 相機掃描即時預畫面框 (預設隱藏) -->
+            <div id="scanner-container" class="hidden mb-6 p-4 bg-gray-50 border rounded-lg max-w-md mx-auto text-center">
+                <div id="reader" class="w-full rounded overflow-hidden"></div>
+                <button type="button" onclick="stopScanner()" class="mt-3 bg-red-500 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-red-600 transition">關閉相機</button>
+            </div>
+
             <form id="add-item-form" class="flex flex-col md:flex-row gap-4 items-end">
                 <div class="flex-1 w-full">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 / 特徵</label>
-                    <input type="text" id="item-name" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">商品名稱 / 條碼貨號</label>
+                    <input type="text" id="item-name" required placeholder="可手動輸入或點擊上方按鈕掃描條碼" class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="w-full md:w-32">
                     <label class="block text-sm font-medium text-gray-700 mb-1">數量</label>
@@ -70,7 +82,7 @@
             <table class="min-w-full text-left border-collapse whitespace-nowrap">
                 <thead class="bg-gray-50 border-b">
                     <tr>
-                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 特徵</th>
+                        <th class="px-6 py-4 font-semibold text-gray-700">商品名稱 / 條碼貨號</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">有效期限</th>
                         <th class="px-6 py-4 font-semibold text-gray-700">剩餘天數</th>
                         <th class="px-6 py-4 font-semibold text-gray-700 text-center">剩餘數量</th>
@@ -86,27 +98,21 @@
 
         <!-- 視圖 B：效期月曆容器 -->
         <div id="view-calendar-container" class="hidden bg-white p-6 rounded-lg shadow-md">
-            <!-- 月曆導航列 -->
             <div class="flex justify-between items-center mb-6">
                 <button onclick="changeMonth(-1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">◀ 上個月</button>
                 <h2 id="calendar-month-title" class="text-xl font-bold text-gray-800">2026年 9月</h2>
                 <button onclick="changeMonth(1)" class="px-4 py-2 border rounded-md hover:bg-gray-50 font-medium text-gray-700">下個月 ▶</button>
             </div>
-            <!-- 顏色圖例說明 -->
             <div class="flex flex-wrap gap-4 mb-4 text-xs font-medium text-gray-600 bg-gray-50 p-3 rounded-md border">
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-red-500 rounded-full inline-block"></span> 🔴 屆期 (&lt;14天)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-yellow-500 rounded-full inline-block"></span> 🟡 警告 (&lt;30天)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-green-500 rounded-full inline-block"></span> 🟢 安全 (30天以上)</div>
                 <div class="flex items-center gap-1.5"><span class="w-3 h-3 bg-gray-400 rounded-full inline-block"></span> ⚫️ 已過期</div>
             </div>
-            <!-- 星期標頭 -->
             <div class="grid grid-cols-7 gap-2 text-center font-bold text-gray-500 mb-2">
                 <div class="text-red-500">日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-blue-500">六</div>
             </div>
-            <!-- 月曆格子本體 -->
-            <div id="calendar-grid" class="grid grid-cols-7 gap-2">
-                <!-- 動態生成日曆格子 -->
-            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
         </div>
     </div>
 
@@ -119,9 +125,53 @@
         let currentInventory = [];
         let db, inventoryCol, firestoreMethods;
         let currentView = 'list'; 
-        
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
+        let html5QrCode = null;
+
+        // 📷 啟動相機掃描條碼
+        window.startScanner = function() {
+            const container = document.getElementById('scanner-container');
+            container.classList.remove('hidden');
+
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+
+            html5QrCode.start(
+                { facingMode: "environment" }, // 優先使用手機後鏡頭
+                {
+                    fps: 10,    // 每秒掃描偵測頻率
+                    qrbox: { width: 250, height: 150 } // 掃描框大小
+                },
+                (decodedText, decodedResult) => {
+                    // 掃描成功回呼
+                    document.getElementById('item-name').value = decodedText;
+                    alert(`成功掃描條碼：${decodedText}`);
+                    stopScanner();
+                },
+                (errorMessage) => {
+                    // 掃描中（未對準時會持續觸發，不需處理錯誤）
+                }
+            ).catch(err => {
+                alert("無法啟動相機！請確認是否已授權瀏覽器使用相機權限。");
+                console.error("相機啟動失敗", err);
+                stopScanner();
+            });
+        };
+
+        // 🛑 關閉相機
+        window.stopScanner = function() {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scanner-container').classList.add('hidden');
+                }).catch(err => {
+                    console.error("關閉相機失敗", err);
+                });
+            } else {
+                document.getElementById('scanner-container').classList.add('hidden');
+            }
+        };
 
         window.switchView = function(viewType) {
             currentView = viewType;
@@ -156,21 +206,13 @@
             
             let status = '', rowClass = '', badgeClass = '';
             if (diffDays < 0) {
-                status = '已過期'; 
-                rowClass = 'bg-gray-200 text-gray-500';
-                badgeClass = 'bg-gray-100 border-gray-300 text-gray-700';
+                status = '已過期'; rowClass = 'bg-gray-200 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700';
             } else if (diffDays < 14) {
-                status = '屆期 (<14天)'; 
-                rowClass = 'bg-red-50 text-red-900';
-                badgeClass = 'bg-red-50 border-red-200 text-red-700';
+                status = '屆期 (<14天)'; rowClass = 'bg-red-50 text-red-900'; badgeClass = 'bg-red-50 border-red-200 text-red-700';
             } else if (diffDays < 30) {
-                status = '警告 (<30天)'; 
-                rowClass = 'bg-yellow-50 text-yellow-900';
-                badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800';
+                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 text-yellow-900'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800';
             } else {
-                status = '安全'; 
-                rowClass = 'bg-green-50 text-green-900';
-                badgeClass = 'bg-green-50 border-green-200 text-green-700';
+                status = '安全'; rowClass = 'bg-green-50 text-green-900'; badgeClass = 'bg-green-50 border-green-200 text-green-700';
             }
             return { diffDays, status, rowClass, badgeClass };
         }
@@ -216,7 +258,6 @@
             });
         }
 
-        // 渲染月曆視圖 (加入顏色區別)
         function renderCalendar() {
             document.getElementById('calendar-month-title').textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
             const grid = document.getElementById('calendar-grid');
@@ -227,9 +268,7 @@
 
             const expiryMap = {};
             currentInventory.forEach(item => {
-                if (!expiryMap[item.expiry]) {
-                    expiryMap[item.expiry] = [];
-                }
+                if (!expiryMap[item.expiry]) expiryMap[item.expiry] = [];
                 expiryMap[item.expiry].push(item);
             });
 
@@ -248,31 +287,24 @@
                 cell.className = "h-32 bg-white rounded-lg border border-gray-200 p-2 overflow-y-auto flex flex-col justify-between";
 
                 const isToday = (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate());
-                
                 let dayHeaderClass = "font-bold text-sm mb-1 flex justify-between items-center";
-                if (isToday) {
-                    dayHeaderClass += " text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded";
-                } else {
-                    dayHeaderClass += " text-gray-700";
-                }
+                if (isToday) dayHeaderClass += " text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded";
+                else dayHeaderClass += " text-gray-700";
 
                 let htmlContent = `<div class="${dayHeaderClass}"><span>${day}</span>`;
                 if (expiryMap[dateKey] && expiryMap[dateKey].length > 0) {
                     htmlContent += `<span class="bg-gray-100 text-gray-600 text-[10px] px-1 rounded-full font-medium">${expiryMap[dateKey].length}項</span>`;
                 }
-                htmlContent += `</div>`;
+                htmlContent += `</div><div class="space-y-1">`;
 
-                // 渲染當天到期的商品標籤 (根據剩餘天數上色)
-                htmlContent += `<div class="space-y-1">`;
                 if (expiryMap[dateKey]) {
                     expiryMap[dateKey].forEach(item => {
                         const { diffDays, badgeClass } = calculateStatus(item.expiry);
                         let icon = diffDays < 0 ? '⚫️' : diffDays < 14 ? '🔴' : diffDays < 30 ? '🟡' : '🟢';
-                        htmlContent += `<div class="border text-xs px-1.5 py-0.5 rounded truncate ${badgeClass}" title="${item.name} (數量: ${item.quantity})">${icon} ${item.name} (${item.quantity})</div>`;
+                        htmlContent += `<div class="border text-xs px-1.5 py-0.5 rounded truncate ${badgeClass}" title="${item.name}">${icon} ${item.name} (${item.quantity})</div>`;
                     });
                 }
                 htmlContent += `</div>`;
-
                 cell.innerHTML = htmlContent;
                 grid.appendChild(cell);
             }
@@ -280,13 +312,8 @@
 
         window.changeMonth = function(direction) {
             calendarMonth += direction;
-            if (calendarMonth > 11) {
-                calendarMonth = 0;
-                calendarYear++;
-            } else if (calendarMonth < 0) {
-                calendarMonth = 11;
-                calendarYear--;
-            }
+            if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+            else if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
             renderCalendar();
         };
 
@@ -321,12 +348,8 @@
                 snapshot.forEach((docSnap) => {
                     currentInventory.push({ id: docSnap.id, ...docSnap.data() });
                 });
-                
-                if (currentView === 'list') {
-                    renderTable();
-                } else {
-                    renderCalendar();
-                }
+                if (currentView === 'list') renderTable();
+                else renderCalendar();
                 
                 document.getElementById('sync-status').textContent = '✅ 已連線';
                 document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold';
