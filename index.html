@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超市商品效期管理系統 (售完功能升級版)</title>
+    <title>超市商品效期管理系統 (企業數據分析版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入條碼掃描專用函式庫 -->
+    <!-- 引入條碼掃描與 Chart.js 視覺化圖表庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         @media print {
@@ -25,10 +26,14 @@
                 <h1 class="text-3xl font-bold text-gray-800">📦 效期與商品庫系統</h1>
                 <span id="sync-status" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full font-bold">連線準備中...</span>
             </div>
-            <div class="flex items-center gap-3">
-                <div class="text-gray-500 text-sm">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="text-gray-500 text-sm mr-2">今日日期：<span id="today-date" class="font-semibold text-gray-700"></span></div>
                 <button onclick="window.print()" class="bg-gray-700 text-white px-3 py-2 rounded-md hover:bg-gray-800 transition text-sm font-medium shadow-sm">
                     🖨️ 列印巡查單
+                </button>
+                <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="importCSV(event)">
+                <button onclick="document.getElementById('csv-file-input').click()" class="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition text-sm font-medium shadow-sm">
+                    📤 批次匯入 CSV
                 </button>
                 <button onclick="exportToCSV()" class="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition text-sm font-medium shadow-sm">
                     📥 匯出 CSV 報表
@@ -43,7 +48,7 @@
         </div>
 
         <!-- 📊 營運數據儀表板 (Stats Dashboard) -->
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 no-print">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 no-print">
             <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-blue-500 flex flex-col justify-between">
                 <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">總庫存件數</span>
                 <span id="stat-total-qty" class="text-2xl font-bold text-gray-800 mt-1">0 件</span>
@@ -67,6 +72,21 @@
             <div class="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-gray-400 flex flex-col justify-between">
                 <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">⚪️ 已售完 (=0)</span>
                 <span id="stat-soldout-count" class="text-2xl font-bold text-gray-600 mt-1">0 項</span>
+            </div>
+        </div>
+
+        <!-- 📈 Chart.js 動態視覺化統計圖表面板 -->
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6 no-print">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                    📈 全店庫存效期健康度視覺化分佈圖
+                </h3>
+                <button onclick="toggleChartPanel()" id="chart-toggle-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                    收合圖表 ▲
+                </button>
+            </div>
+            <div id="chart-container" class="h-48 relative">
+                <canvas id="expiryChart"></canvas>
             </div>
         </div>
 
@@ -143,7 +163,7 @@
 
         <!-- 視圖 A：列表清單容器 -->
         <div id="view-list-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
-            <!-- 🎛️ 預警狀態篩選頁籤 (加入已售完按鈕) -->
+            <!-- 🎛️ 預警狀態篩選頁籤 -->
             <div class="p-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-3 no-print">
                 <div class="flex flex-wrap gap-1.5 text-xs font-medium">
                     <button onclick="setFilter('ALL')" id="filter-btn-ALL" class="px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-sm font-bold">全部商品</button>
@@ -228,10 +248,11 @@
         let productDatabase = {};
         let db, inventoryCol, productsCol, logsCol, firestoreMethods;
         let currentView = 'list'; 
-        let currentStatusFilter = 'ALL'; // ALL, RED, YELLOW, GREEN, EXPIRED, LOW_STOCK, SOLD_OUT
+        let currentStatusFilter = 'ALL'; 
         let calendarYear = today.getFullYear();
         let calendarMonth = today.getMonth();
         let html5QrCode = null;
+        let chartInstance = null;
 
         const defaultProducts = {
             "7315122013870": "榛果牛奶巧克力片 100g",
@@ -261,6 +282,18 @@
             }
         }
 
+        window.toggleChartPanel = function() {
+            const container = document.getElementById('chart-container');
+            const btn = document.getElementById('chart-toggle-btn');
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                btn.textContent = '收合圖表 ▲';
+            } else {
+                container.classList.add('hidden');
+                btn.textContent = '展開圖表 ▼';
+            }
+        };
+
         window.setFilter = function(filterType) {
             currentStatusFilter = filterType;
             const filterBtns = ['ALL', 'RED', 'YELLOW', 'GREEN', 'EXPIRED', 'LOW_STOCK', 'SOLD_OUT'];
@@ -278,11 +311,48 @@
             renderTable();
         };
 
+        function updateChart(red, yellow, green, expired, soldOut) {
+            const ctx = document.getElementById('expiryChart');
+            if (!ctx) return;
+            
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['🔴 屆期 (<14天)', '🟡 警告 (14-29天)', '🟢 安全 (≥30天)', '⚫️ 已過期', '⚪️ 已售完'],
+                    datasets: [{
+                        label: '品項數量',
+                        data: [red, yellow, green, expired, soldOut],
+                        backgroundColor: [
+                            'rgba(239, 68, 68, 0.85)',
+                            'rgba(245, 158, 11, 0.85)',
+                            'rgba(34, 197, 94, 0.85)',
+                            'rgba(156, 163, 175, 0.85)',
+                            'rgba(209, 213, 219, 0.85)'
+                        ],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
         function updateDashboardStats() {
             let totalQty = 0;
             let redCount = 0;
             let yellowCount = 0;
             let greenCount = 0;
+            let expiredCount = 0;
             let lowCount = 0;
             let soldOutCount = 0;
 
@@ -300,7 +370,7 @@
                     const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
 
                     if (diffDays < 0) {
-                        // 已過期
+                        expiredCount++;
                     } else if (diffDays < 14) {
                         redCount++;
                     } else if (diffDays < 30) {
@@ -317,7 +387,58 @@
             document.getElementById('stat-green-count').textContent = `${greenCount} 項`;
             document.getElementById('stat-low-count').textContent = `${lowCount} 項`;
             document.getElementById('stat-soldout-count').textContent = `${soldOutCount} 項`;
+
+            // 更新 Chart.js 圖表
+            updateChart(redCount, yellowCount, greenCount, expiredCount, soldOutCount);
         }
+
+        // 📤 批次 CSV 檔案匯入解析器
+        window.importCSV = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                const text = evt.target.result;
+                const lines = text.split('\n');
+                let addedCount = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                    if (cols.length >= 2) {
+                        const name = cols[0];
+                        let discount = "", expiry = "", qty = 1;
+
+                        if (cols.length >= 5) {
+                            discount = (cols[1] === "正價" || !cols[1]) ? "" : cols[1];
+                            expiry = cols[2];
+                            qty = parseInt(cols[4], 10) || 1;
+                        } else {
+                            expiry = cols[1];
+                            if (cols[2]) qty = parseInt(cols[2], 10) || 1;
+                        }
+
+                        if (name && expiry) {
+                            await firestoreMethods.addDoc(inventoryCol, {
+                                name: name,
+                                barcode: "",
+                                discount: discount,
+                                quantity: qty,
+                                expiry: expiry
+                            });
+                            addedCount++;
+                        }
+                    }
+                }
+                alert(`✅ 成功批次匯入 ${addedCount} 筆商品資料！`);
+                await logActivity("📤 批次匯入", "CSV檔案匯入", `一次性成功寫入 ${addedCount} 筆商品資料`);
+                e.target.value = '';
+            };
+            reader.readAsText(file);
+        };
 
         function renderQuickButtons() {
             const grid = document.getElementById('quick-buttons-grid');
@@ -473,11 +594,8 @@
             }
         };
 
-        // 狀態計算邏輯 (包含已售完判斷)
         function calculateStatus(expiryDateStr, quantity) {
             const qty = parseInt(quantity) || 0;
-            
-            // 優先判斷是否已售完
             if (qty === 0) {
                 return {
                     diffDays: 0,
@@ -539,13 +657,11 @@
                 let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
                 const isLowStock = (qty > 0 && qty <= 2);
 
-                // 促銷折數標籤
                 let discountBadge = '';
                 if (item.discount && qty > 0) {
                     discountBadge = `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200">🏷️ ${item.discount}</span>`;
                 }
 
-                // 低庫存預警標籤
                 let lowStockBadge = isLowStock ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white shadow-sm">⚠️ 低庫存</span>` : '';
 
                 const tr = document.createElement('tr');
@@ -597,6 +713,7 @@
                 else if (log.type?.includes('調整')) badgeColor = "bg-blue-100 text-blue-800";
                 else if (log.type?.includes('售完')) badgeColor = "bg-gray-200 text-gray-800";
                 else if (log.type?.includes('刪除')) badgeColor = "bg-red-100 text-red-800";
+                else if (log.type?.includes('匯入')) badgeColor = "bg-purple-100 text-purple-800";
 
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-gray-50 transition";
@@ -765,7 +882,6 @@
             }
         };
 
-        // 一鍵標示為已售完
         window.setSoldOut = async function(id, name) {
             if (!db) return alert("連線異常，無法更新資料");
             const itemRef = firestoreMethods.doc(db, "inventory", id);
