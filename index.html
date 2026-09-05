@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統 (權限管控版)</title>
+    <title>超市商品效期與進銷存損益管理系統 (推播預警版)</title>
     <!-- PWA 與手機原生 App 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -42,6 +42,10 @@
                         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                         🔌 條碼槍監聽中
                     </span>
+                    <!-- 🔔 瀏覽器系統推播預警按鈕 -->
+                    <button id="push-notify-btn" onclick="requestNotificationPermission()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 hover:bg-gray-300">
+                        🔔 啟用推播
+                    </button>
                     <!-- 🔒 店員/店長權限切換按鈕 -->
                     <button id="role-toggle-btn" onclick="toggleRole()" class="bg-slate-700 text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-slate-600 shadow-sm hover:bg-slate-800">
                         🔒 店員模式 (點擊解鎖)
@@ -206,7 +210,7 @@
                             <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                             <option value="烘焙麵包">🥐 烘焙麵包</option>
                             <option value="熟食調理">🍱 熟食調理</option>
-                            <option value="罐頭乾貨">🥫 罐頭乾貨</option>
+                            <option value="罐頭乾貨">罐 罐頭乾貨</option>
                             <option value="其他">📦 其他</option>
                         </select>
                     </div>
@@ -454,8 +458,11 @@
         let chartInstance = null;
 
         // 🔒 權限與 PIN 碼管理 (預設 PIN: 1234)
-        let currentRole = 'clerk'; // 'clerk' 或 'manager'
+        let currentRole = 'clerk';
         let managerPin = localStorage.getItem('manager_pin') || '1234';
+
+        // 🔔 系統級推播預警狀態變數
+        let notificationSentSession = false;
 
         const defaultProducts = {
             "7315122013870": "榛果牛奶巧克力片 100g",
@@ -471,7 +478,84 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 🔒 1. 角色切換與 PIN 碼驗證
+        // 🔔 1. 請求瀏覽器系統級推播權限
+        window.requestNotificationPermission = async function() {
+            if (!('Notification' in window)) {
+                alert("⚠️ 您的瀏覽器不支援 Notification 系統級推播通知！");
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                showToast("🔔 系統推播預警已啟用！正在進行檢測...");
+                checkAndTriggerPushNotification(true);
+            } else if (Notification.permission !== 'denied') {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    showToast("✅ 已成功授權推播預警通知！");
+                    updateNotificationButtonUI();
+                    checkAndTriggerPushNotification(true);
+                } else {
+                    alert("⚠️ 未獲得通知權限，無法發送即期推播提醒。");
+                }
+            } else {
+                alert("⚠️ 系統推播權限已被封鎖，請至瀏覽器設定中解除對本站的封鎖。");
+            }
+        };
+
+        // 🔔 2. 更新推播按鈕 UI 燈號
+        function updateNotificationButtonUI() {
+            const btn = document.getElementById('push-notify-btn');
+            if (!btn) return;
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+                btn.innerHTML = "🟢 預警已啟用";
+                btn.className = "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-emerald-300 dark:border-emerald-700 shadow-sm";
+            } else {
+                btn.innerHTML = "🔔 啟用推播";
+                btn.className = "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 hover:bg-gray-300";
+            }
+        }
+
+        // 🔔 3. 檢查並觸發系統級即期推播預警卡片
+        function checkAndTriggerPushNotification(force = false) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            if (!force && notificationSentSession) return;
+
+            const urgentItems = currentInventory.filter(item => {
+                const qty = parseInt(item.quantity) || 0;
+                if (qty <= 0) return false;
+                const expiryDate = new Date(item.expiry);
+                expiryDate.setHours(0, 0, 0, 0);
+                const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+                return diffDays <= 3; // 3天內即將過期或已過期
+            });
+
+            if (urgentItems.length > 0) {
+                const sampleNames = urgentItems.slice(0, 2).map(i => i.name).join('、');
+                const extraCount = urgentItems.length > 2 ? `等共 ${urgentItems.length} 項` : '';
+                const bodyText = `注意！有 ${urgentItems.length} 項商品即將在 3 天內過期 (${sampleNames}${extraCount})，請儘速進行排面調整或貼折價標籤去化！`;
+
+                const notif = new Notification("⚠️ 門市即期品過期預警", {
+                    body: bodyText,
+                    icon: "https://cdn-icons-png.flaticon.com/512/3602/3602145.png",
+                    tag: "expiry-warning-notification"
+                });
+
+                notif.onclick = function() {
+                    window.focus();
+                    notif.close();
+                };
+
+                notificationSentSession = true;
+            } else if (force) {
+                new Notification("🎉 門市效期狀況良好", {
+                    body: "目前沒有任何 3 天內即將過期或已過期的品項，感謝您的巡查！",
+                    tag: "expiry-healthy-notification"
+                });
+            }
+        }
+
+        // 🔒 角色切換與 PIN 碼驗證
         window.toggleRole = function() {
             if (currentRole === 'clerk') {
                 const inputPin = prompt("🔑 請輸入店長解鎖 PIN 碼 (預設為 1234)：");
@@ -491,7 +575,7 @@
             }
         };
 
-        // ⚙️ 2. 修改店長 PIN 碼
+        // ⚙️ 修改店長 PIN 碼
         window.changeManagerPin = function() {
             if (currentRole !== 'manager') return;
             const newPin = prompt("⚙️ 請輸入新的 4 位數店長 PIN 碼：");
@@ -504,7 +588,7 @@
             }
         };
 
-        // 🔄 3. 更新 UI 權限隱顯狀態
+        // 🔄 更新 UI 權限隱顯狀態
         function updateRoleUI() {
             const btn = document.getElementById('role-toggle-btn');
             const changePinBtn = document.getElementById('change-pin-btn');
@@ -1117,6 +1201,9 @@
 
             updateSupplierDropdown();
             updateChart(redCount, yellowCount, greenCount, expiredCount, soldOutCount);
+            
+            // 數據載入後，自動觸發即期品系統推播檢測
+            checkAndTriggerPushNotification(false);
         }
 
         window.importCSV = function(e) {
@@ -1475,7 +1562,6 @@
 
                 let profitBadgeClass = unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold animate-pulse";
 
-                // 權限動態欄位
                 let priceColHTML = currentRole === 'manager' 
                     ? `<span class="text-gray-400 text-[10px]">$${cost} /</span> <span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>` 
                     : `<span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>`;
@@ -1636,6 +1722,9 @@
         document.getElementById('search-input').addEventListener('input', function() {
             if (currentView === 'list') resetAndRender();
         });
+
+        // 初始化權限與推播按鈕燈號
+        updateNotificationButtonUI();
 
         try {
             document.getElementById('sync-status').textContent = '連線中...';
