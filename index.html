@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超市商品效期與進銷存損益管理系統 (推播預警版)</title>
+    <title>超市商品效期與進銷存損益管理系統 (PWA 離線旗艦版)</title>
     <!-- PWA 與手機原生 App 設定 -->
+    <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1e293b">
@@ -36,7 +37,8 @@
             <div class="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start flex-wrap">
                 <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">📦 效期與損益管理系統</h1>
                 <div class="flex items-center gap-1.5 flex-wrap">
-                    <span id="sync-status" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2 py-1 rounded-full font-bold">連線中...</span>
+                    <!-- 📶 PWA 網路狀態燈 -->
+                    <span id="sync-status" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs px-2 py-1 rounded-full font-bold">連線檢查中...</span>
                     <!-- 🔌 實體條碼槍狀態燈 -->
                     <span class="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 border border-emerald-300 dark:border-emerald-700">
                         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -210,7 +212,7 @@
                             <option value="飲料鮮乳">🥛 飲料鮮乳</option>
                             <option value="烘焙麵包">🥐 烘焙麵包</option>
                             <option value="熟食調理">🍱 熟食調理</option>
-                            <option value="罐頭乾貨">罐 罐頭乾貨</option>
+                            <option value="罐頭乾貨">🥫 罐頭乾貨</option>
                             <option value="其他">📦 其他</option>
                         </select>
                     </div>
@@ -434,6 +436,19 @@
         <span id="toast-message">操作成功</span>
     </div>
 
+    <!-- 註冊 Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('📦 Service Worker 註冊成功, 支援 PWA 離線快取:', reg.scope);
+                }).catch(err => {
+                    console.log('Service Worker 註冊失敗:', err);
+                });
+            });
+        }
+    </script>
+
     <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
         const today = new Date();
@@ -457,11 +472,9 @@
         let html5QrCode = null;
         let chartInstance = null;
 
-        // 🔒 權限與 PIN 碼管理 (預設 PIN: 1234)
+        // 🔒 權限與 PIN 碼管理
         let currentRole = 'clerk';
         let managerPin = localStorage.getItem('manager_pin') || '1234';
-
-        // 🔔 系統級推播預警狀態變數
         let notificationSentSession = false;
 
         const defaultProducts = {
@@ -478,13 +491,27 @@
             "471000001": "鮮乳 (全脂)"
         };
 
-        // 🔔 1. 請求瀏覽器系統級推播權限
+        // 📶 偵測網路連線狀態
+        const syncStatus = document.getElementById('sync-status');
+        function updateNetworkStatus() {
+            if (navigator.onLine) {
+                syncStatus.textContent = '✅ 已連線 (同步中)';
+                syncStatus.className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold shadow-sm';
+            } else {
+                syncStatus.textContent = '📶 離線暫存模式';
+                syncStatus.className = 'bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse shadow-sm';
+                showToast("📶 進入離線模式，資料將安全暫存於本機");
+            }
+        }
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+
+        // 🔔 推播預警相關
         window.requestNotificationPermission = async function() {
             if (!('Notification' in window)) {
                 alert("⚠️ 您的瀏覽器不支援 Notification 系統級推播通知！");
                 return;
             }
-
             if (Notification.permission === 'granted') {
                 showToast("🔔 系統推播預警已啟用！正在進行檢測...");
                 checkAndTriggerPushNotification(true);
@@ -498,15 +525,13 @@
                     alert("⚠️ 未獲得通知權限，無法發送即期推播提醒。");
                 }
             } else {
-                alert("⚠️ 系統推播權限已被封鎖，請至瀏覽器設定中解除對本站的封鎖。");
+                alert("⚠️ 系統推播權限已被封鎖，請解除封鎖。");
             }
         };
 
-        // 🔔 2. 更新推播按鈕 UI 燈號
         function updateNotificationButtonUI() {
             const btn = document.getElementById('push-notify-btn');
             if (!btn) return;
-
             if ('Notification' in window && Notification.permission === 'granted') {
                 btn.innerHTML = "🟢 預警已啟用";
                 btn.className = "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-emerald-300 dark:border-emerald-700 shadow-sm";
@@ -516,269 +541,142 @@
             }
         }
 
-        // 🔔 3. 檢查並觸發系統級即期推播預警卡片
         function checkAndTriggerPushNotification(force = false) {
             if (!('Notification' in window) || Notification.permission !== 'granted') return;
             if (!force && notificationSentSession) return;
-
             const urgentItems = currentInventory.filter(item => {
                 const qty = parseInt(item.quantity) || 0;
                 if (qty <= 0) return false;
                 const expiryDate = new Date(item.expiry);
                 expiryDate.setHours(0, 0, 0, 0);
                 const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                return diffDays <= 3; // 3天內即將過期或已過期
+                return diffDays <= 3;
             });
-
             if (urgentItems.length > 0) {
                 const sampleNames = urgentItems.slice(0, 2).map(i => i.name).join('、');
                 const extraCount = urgentItems.length > 2 ? `等共 ${urgentItems.length} 項` : '';
-                const bodyText = `注意！有 ${urgentItems.length} 項商品即將在 3 天內過期 (${sampleNames}${extraCount})，請儘速進行排面調整或貼折價標籤去化！`;
-
+                const bodyText = `注意！有 ${urgentItems.length} 項商品即將在 3 天內過期 (${sampleNames}${extraCount})，請儘速去化！`;
                 const notif = new Notification("⚠️ 門市即期品過期預警", {
-                    body: bodyText,
-                    icon: "https://cdn-icons-png.flaticon.com/512/3602/3602145.png",
-                    tag: "expiry-warning-notification"
+                    body: bodyText, icon: "https://cdn-icons-png.flaticon.com/512/3602/3602145.png", tag: "expiry-warning-notification"
                 });
-
-                notif.onclick = function() {
-                    window.focus();
-                    notif.close();
-                };
-
+                notif.onclick = function() { window.focus(); notif.close(); };
                 notificationSentSession = true;
             } else if (force) {
-                new Notification("🎉 門市效期狀況良好", {
-                    body: "目前沒有任何 3 天內即將過期或已過期的品項，感謝您的巡查！",
-                    tag: "expiry-healthy-notification"
-                });
+                new Notification("🎉 門市效期狀況良好", { body: "目前沒有即將過期品項！", tag: "expiry-healthy-notification" });
             }
         }
 
-        // 🔒 角色切換與 PIN 碼驗證
         window.toggleRole = function() {
             if (currentRole === 'clerk') {
                 const inputPin = prompt("🔑 請輸入店長解鎖 PIN 碼 (預設為 1234)：");
                 if (inputPin === null) return;
-
-                if (inputPin === managerPin) {
-                    currentRole = 'manager';
-                    showToast("🔓 已解鎖切換至「店長權限模式」");
-                    updateRoleUI();
-                } else {
-                    alert("❌ PIN 碼錯誤！無法解鎖店長權限。");
-                }
+                if (inputPin === managerPin) { currentRole = 'manager'; showToast("🔓 已解鎖切換至「店長權限模式」"); updateRoleUI(); } 
+                else { alert("❌ PIN 碼錯誤！無法解鎖店長權限。"); }
             } else {
-                currentRole = 'clerk';
-                showToast("🔒 已切回「店員巡查模式」");
-                updateRoleUI();
+                currentRole = 'clerk'; showToast("🔒 已切回「店員巡查模式」"); updateRoleUI();
             }
         };
 
-        // ⚙️ 修改店長 PIN 碼
         window.changeManagerPin = function() {
             if (currentRole !== 'manager') return;
             const newPin = prompt("⚙️ 請輸入新的 4 位數店長 PIN 碼：");
             if (newPin && newPin.trim().length >= 4) {
-                managerPin = newPin.trim();
-                localStorage.setItem('manager_pin', managerPin);
-                showToast("✅ 店長 PIN 碼已更新成功！");
-            } else if (newPin !== null) {
-                alert("⚠️ PIN 碼長度至少需為 4 位數。");
-            }
+                managerPin = newPin.trim(); localStorage.setItem('manager_pin', managerPin); showToast("✅ 店長 PIN 碼已更新成功！");
+            } else if (newPin !== null) { alert("⚠️ PIN 碼長度至少需為 4 位數。"); }
         };
 
-        // 🔄 更新 UI 權限隱顯狀態
         function updateRoleUI() {
             const btn = document.getElementById('role-toggle-btn');
             const changePinBtn = document.getElementById('change-pin-btn');
             const managerElements = document.querySelectorAll('.manager-only');
             const thPrice = document.getElementById('th-price');
-
             if (currentRole === 'manager') {
-                btn.textContent = "🔓 店長權限 (點擊上鎖)";
-                btn.className = "bg-amber-600 text-white px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-amber-500 shadow-sm hover:bg-amber-700";
-                changePinBtn.classList.remove('hidden');
-                
-                managerElements.forEach(el => el.classList.remove('hidden'));
+                btn.textContent = "🔓 店長權限 (點擊上鎖)"; btn.className = "bg-amber-600 text-white px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-amber-500 shadow-sm hover:bg-amber-700";
+                changePinBtn.classList.remove('hidden'); managerElements.forEach(el => el.classList.remove('hidden'));
                 if (thPrice) thPrice.textContent = "進價 / 售價";
             } else {
-                btn.textContent = "🔒 店員模式 (點擊解鎖)";
-                btn.className = "bg-slate-700 text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-slate-600 shadow-sm hover:bg-slate-800";
-                changePinBtn.classList.add('hidden');
-
-                managerElements.forEach(el => el.classList.add('hidden'));
+                btn.textContent = "🔒 店員模式 (點擊解鎖)"; btn.className = "bg-slate-700 text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-slate-600 shadow-sm hover:bg-slate-800";
+                changePinBtn.classList.add('hidden'); managerElements.forEach(el => el.classList.add('hidden'));
                 if (thPrice) thPrice.textContent = "單價 / 售價";
             }
-
             renderTable();
         }
 
-        // 💾 全系統 JSON 備份導出
         window.backupToJSON = function() {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const backupData = {
-                version: "3.0_PRO",
-                backupTime: new Date().toISOString(),
-                inventory: currentInventory,
-                products: productDatabase,
-                logs: currentLogs
-            };
-
+            const backupData = { version: "4.0_PWA", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
             const jsonStr = JSON.stringify(backupData, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `門市庫存全系統備份_${today.toISOString().split('T')[0]}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存全系統備份_${today.toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
             showToast("💾 全系統 JSON 災難備份檔匯出成功！");
         };
 
-        // 🔄 全系統 JSON 災難還原
         window.restoreFromJSON = function(e) {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const file = e.target.files[0];
-            if (!file) return;
-
+            const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = async function(evt) {
                 try {
                     const backupData = JSON.parse(evt.target.result);
-
-                    if (!backupData || (!backupData.inventory && !backupData.products)) {
-                        alert("⚠️ 無效的備份檔案格式！無法進行還原。");
-                        return;
-                    }
-
-                    const invCount = Array.isArray(backupData.inventory) ? backupData.inventory.length : 0;
-                    const prodCount = backupData.products ? Object.keys(backupData.products).length : 0;
-                    const timeStr = backupData.backupTime ? new Date(backupData.backupTime).toLocaleString('zh-TW') : '未知';
-
-                    const confirmMsg = `⚠️ 警告：確定要進行災難還原嗎？\n\n- 備份時間：${timeStr}\n- 包含庫存筆數：${invCount} 筆\n- 包含條碼對應：${prodCount} 筆\n\n系統將自動同步並寫入資料庫！`;
-                    
-                    if (!confirm(confirmMsg)) {
-                        e.target.value = '';
-                        return;
-                    }
-
+                    if (!confirm("⚠️ 警告：確定要進行災難還原嗎？系統將自動同步並寫入資料庫！")) { e.target.value = ''; return; }
                     showToast("🔄 正在寫入並還原系統資料，請稍候...");
-
-                    let restoredInv = 0;
-                    if (Array.isArray(backupData.inventory)) {
-                        for (const item of backupData.inventory) {
-                            const newItem = { ...item };
-                            delete newItem.id;
-                            await firestoreMethods.addDoc(inventoryCol, newItem);
-                            restoredInv++;
-                        }
-                    }
-
-                    let restoredProd = 0;
-                    if (backupData.products && typeof backupData.products === 'object') {
-                        for (const [barcode, name] of Object.entries(backupData.products)) {
-                            if (!productDatabase[barcode]) {
-                                await firestoreMethods.addDoc(productsCol, { barcode, name });
-                                restoredProd++;
-                            }
-                        }
-                    }
-
-                    showToast(`✅ 災難還原完成！還原 ${restoredInv} 筆庫存，${restoredProd} 筆條碼資料。`);
-                    await logActivity("🔄 災難還原", "JSON全系統還原", `成功還原 ${restoredInv} 筆庫存與 ${restoredProd} 筆條碼字典`);
-
-                } catch (err) {
-                    console.error("還原失敗：", err);
-                    alert("❌ 備份檔案解析失敗：" + err.message);
-                } finally {
-                    e.target.value = '';
-                }
+                    let restoredInv = 0, restoredProd = 0;
+                    if (Array.isArray(backupData.inventory)) { for (const item of backupData.inventory) { const newItem = { ...item }; delete newItem.id; await firestoreMethods.addDoc(inventoryCol, newItem); restoredInv++; } }
+                    if (backupData.products) { for (const [barcode, name] of Object.entries(backupData.products)) { if (!productDatabase[barcode]) { await firestoreMethods.addDoc(productsCol, { barcode, name }); restoredProd++; } } }
+                    showToast(`✅ 災難還原完成！`); await logActivity("🔄 災難還原", "JSON全系統還原", `成功還原 ${restoredInv} 筆庫存`);
+                } catch (err) { alert("❌ 解析失敗：" + err.message); } finally { e.target.value = ''; }
             };
             reader.readAsText(file);
         };
 
-        // 🔌 實體條碼槍自動監聽邏輯
-        let barcodeGunBuffer = "";
-        let lastKeyTime = 0;
-
+        let barcodeGunBuffer = ""; let lastKeyTime = 0;
         document.addEventListener('keydown', async function(e) {
             const currentTime = Date.now();
-            const timeDiff = currentTime - lastKeyTime;
+            if (currentTime - lastKeyTime > 100) barcodeGunBuffer = "";
             lastKeyTime = currentTime;
-
-            if (timeDiff > 100) barcodeGunBuffer = "";
             if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
-
             if (e.key === 'Enter') {
                 if (barcodeGunBuffer.length >= 3) {
-                    const scannedBarcode = barcodeGunBuffer.trim();
-                    barcodeGunBuffer = "";
-                    if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-                        e.preventDefault();
-                    }
+                    const scannedBarcode = barcodeGunBuffer.trim(); barcodeGunBuffer = "";
+                    if (document.activeElement && document.activeElement.tagName === 'INPUT') e.preventDefault();
                     await handleBarcodeGunScan(scannedBarcode);
                 }
-                barcodeGunBuffer = "";
-                return;
+                barcodeGunBuffer = ""; return;
             }
-
             if (e.key.length === 1) barcodeGunBuffer += e.key;
         });
 
         async function handleBarcodeGunScan(barcode) {
             const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
             const existingItem = currentInventory.find(item => item.barcode === barcode || item.name === matchedName);
-
             if (existingItem) {
                 await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
-                speakText(`條碼槍：${matchedName}，數量加一`);
-                showToast(`🔌 [條碼槍] ${matchedName} 數量 +1`);
+                speakText(`條碼槍：${matchedName}，數量加一`); showToast(`🔌 [條碼槍] ${matchedName} 數量 +1`);
             } else {
-                document.getElementById('item-barcode').value = barcode;
-                document.getElementById('item-name').value = matchedName;
-                
-                const formContent = document.getElementById('add-form-content');
-                if (formContent.classList.contains('hidden')) toggleAddForm();
-                
-                speakText(`條碼槍掃描新品：${matchedName}`);
-                showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
+                document.getElementById('item-barcode').value = barcode; document.getElementById('item-name').value = matchedName;
+                if (document.getElementById('add-form-content').classList.contains('hidden')) toggleAddForm();
+                speakText(`掃描新品：${matchedName}`); showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
                 document.getElementById('item-quantity').focus();
             }
         }
 
         function getEffectiveUnitPrice(price, discount) {
             if (!discount) return price;
-            if (discount === '8折') return price * 0.8;
-            if (discount === '7折') return price * 0.7;
-            if (discount === '5折') return price * 0.5;
-            if (discount === '即期出清') return price * 0.3;
-            return price;
+            if (discount === '8折') return price * 0.8; if (discount === '7折') return price * 0.7;
+            if (discount === '5折') return price * 0.5; if (discount === '即期出清') return price * 0.3; return price;
         }
 
         window.onscroll = function() {
             const btn = document.getElementById('back-to-top');
-            if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
-                btn.classList.remove('hidden');
-            } else {
-                btn.classList.add('hidden');
-            }
+            if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) btn.classList.remove('hidden');
+            else btn.classList.add('hidden');
         };
 
         window.toggleAddForm = function() {
-            const content = document.getElementById('add-form-content');
-            const text = document.getElementById('add-form-toggle-text');
-            if (content.classList.contains('hidden')) {
-                content.classList.remove('hidden');
-                text.textContent = '(點擊收合)';
-            } else {
-                content.classList.add('hidden');
-                text.textContent = '(點擊展開)';
-            }
+            const content = document.getElementById('add-form-content'); const text = document.getElementById('add-form-toggle-text');
+            if (content.classList.contains('hidden')) { content.classList.remove('hidden'); text.textContent = '(點擊收合)'; } 
+            else { content.classList.add('hidden'); text.textContent = '(點擊展開)'; }
         };
 
         window.toggleDarkMode = function() {
@@ -787,1124 +685,403 @@
         };
 
         function speakText(text) {
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'zh-TW';
-                utterance.rate = 1.1;
-                window.speechSynthesis.speak(utterance);
-            }
+            if ('speechSynthesis' in window) { const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'zh-TW'; utterance.rate = 1.1; window.speechSynthesis.speak(utterance); }
         }
 
-        window.changePageSize = function(size) {
-            pageSize = parseInt(size, 10);
-            currentPage = 1;
-            renderTable();
-        };
-
-        window.changePage = function(delta) {
-            currentPage += delta;
-            renderTable();
-        };
-
-        window.resetAndRender = function() {
-            currentPage = 1;
-            renderTable();
-        };
+        window.changePageSize = function(size) { pageSize = parseInt(size, 10); currentPage = 1; renderTable(); };
+        window.changePage = function(delta) { currentPage += delta; renderTable(); };
+        window.resetAndRender = function() { currentPage = 1; renderTable(); };
 
         window.generatePurchaseOrder = function() {
-            let lowStockItems = currentInventory.filter(item => {
-                const qty = parseInt(item.quantity) || 0;
-                return qty <= 2;
-            });
-
-            if (lowStockItems.length === 0) {
-                alert("🎉 當前所有商品庫存充裕，無須採購補貨！");
-                return;
-            }
-
-            let csvContent = "商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,預估進價,預估總進價成本\n";
+            let lowStockItems = currentInventory.filter(item => (parseInt(item.quantity) || 0) <= 2);
+            if (lowStockItems.length === 0) return alert("🎉 當前所有商品庫存充裕，無須採購補貨！");
+            let csvContent = "﻿商品名稱,類別,供應商,貨架位置,當前庫存,建議採購量,預估進價,預估總進價成本\n";
             lowStockItems.forEach(item => {
-                const safeName = `"${item.name.replace(/"/g, '""')}"`;
-                const categoryText = item.category || "常溫商品";
-                const supplierText = item.supplier || "通用廠商";
-                const locationText = item.location || "未指定";
-                const qty = parseInt(item.quantity) || 0;
-                const cost = parseFloat(item.cost) || 0;
-                const suggestedQty = Math.max(10 - qty, 5);
-                const estAmount = suggestedQty * cost;
-
-                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${qty},${suggestedQty},${cost},${estAmount}\n`;
+                const qty = parseInt(item.quantity) || 0; const cost = parseFloat(item.cost) || 0; const suggestedQty = Math.max(10 - qty, 5);
+                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫商品"},${item.supplier||"通用廠商"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}
+`;
             });
-
-            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", `門市補貨採購建議表_${today.toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast(`🛒 已成功匯出 ${lowStockItems.length} 項缺貨採購建議單！`);
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市補貨採購建議表_${today.toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast(`🛒 已成功匯出採購建議單！`);
         };
 
         window.startVoiceSearch = function() {
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'zh-TW';
-                recognition.start();
-
-                showToast("🎙️ 正在聆聽，請說出商品名稱...");
-
+                const recognition = new SpeechRecognition(); recognition.lang = 'zh-TW'; recognition.start();
+                showToast("🎙️ 正在聆聽...");
                 recognition.onresult = function(event) {
-                    const text = event.results[0][0].transcript;
-                    document.getElementById('search-input').value = text;
-                    showToast(`🎙️ 語音搜尋：${text}`);
-                    resetAndRender();
+                    document.getElementById('search-input').value = event.results[0][0].transcript;
+                    showToast(`🎙️ 搜尋：${event.results[0][0].transcript}`); resetAndRender();
                 };
-            } else {
-                alert("⚠️ 您的瀏覽器不支援語音辨識功能。");
-            }
+            } else { alert("⚠️ 您的瀏覽器不支援語音辨識功能。"); }
         };
 
         function showToast(msg) {
-            const toast = document.getElementById('toast-banner');
-            document.getElementById('toast-message').textContent = msg;
-            toast.classList.remove('hidden');
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
+            const toast = document.getElementById('toast-banner'); document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('hidden'); setTimeout(() => { toast.classList.add('hidden'); }, 3000);
         }
 
         async function logActivity(type, itemName, detail) {
             if (!db) return;
-            try {
-                await firestoreMethods.addDoc(logsCol, {
-                    type: type,
-                    itemName: itemName,
-                    detail: detail,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (err) {
-                console.error("寫入日誌失敗：", err);
-            }
+            try { await firestoreMethods.addDoc(logsCol, { type: type, itemName: itemName, detail: detail, timestamp: new Date().toISOString() }); } catch (err) { console.error("日誌失敗", err); }
         }
 
         window.openBarcodeModal = function(name, barcode, price, expiry) {
-            const modal = document.getElementById('barcode-modal');
-            document.getElementById('modal-item-name').textContent = name;
+            const modal = document.getElementById('barcode-modal'); document.getElementById('modal-item-name').textContent = name;
             document.getElementById('modal-item-info').textContent = `售價: $${price} | 有效期限: ${expiry}`;
-
-            const displayBarcode = barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000);
-
-            JsBarcode("#barcode-svg", displayBarcode, {
-                format: "CODE128",
-                width: 2,
-                height: 50,
-                displayValue: true,
-                fontSize: 12
-            });
-
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            JsBarcode("#barcode-svg", barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000), { format: "CODE128", width: 2, height: 50, displayValue: true, fontSize: 12 });
+            modal.classList.remove('hidden'); modal.classList.add('flex');
         };
-
-        window.closeBarcodeModal = function() {
-            const modal = document.getElementById('barcode-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        };
+        window.closeBarcodeModal = function() { const modal = document.getElementById('barcode-modal'); modal.classList.add('hidden'); modal.classList.remove('flex'); };
 
         window.toggleSelectAll = function(masterCheckbox) {
-            const checkboxes = document.querySelectorAll('.item-checkbox');
-            selectedItemIds.clear();
-
-            checkboxes.forEach(cb => {
-                cb.checked = masterCheckbox.checked;
-                if (masterCheckbox.checked) {
-                    selectedItemIds.add(cb.value);
-                }
-            });
+            document.querySelectorAll('.item-checkbox').forEach(cb => { cb.checked = masterCheckbox.checked; if (masterCheckbox.checked) selectedItemIds.add(cb.value); });
+            if (!masterCheckbox.checked) selectedItemIds.clear();
             updateBatchActionBar();
         };
 
         window.toggleItemSelection = function(id) {
-            if (selectedItemIds.has(id)) {
-                selectedItemIds.delete(id);
-            } else {
-                selectedItemIds.add(id);
-            }
-            updateBatchActionBar();
+            if (selectedItemIds.has(id)) selectedItemIds.delete(id); else selectedItemIds.add(id); updateBatchActionBar();
         };
 
         function updateBatchActionBar() {
-            const bar = document.getElementById('batch-action-bar');
-            const countText = document.getElementById('selected-count');
-            countText.textContent = selectedItemIds.size;
-
-            if (selectedItemIds.size > 0) {
-                bar.classList.remove('hidden');
-            } else {
-                bar.classList.add('hidden');
-            }
+            const bar = document.getElementById('batch-action-bar'); document.getElementById('selected-count').textContent = selectedItemIds.size;
+            if (selectedItemIds.size > 0) bar.classList.remove('hidden'); else bar.classList.add('hidden');
         }
 
         window.batchSetDiscount = async function(discountTag) {
             if (!db) return;
-            for (const id of selectedItemIds) {
-                const itemRef = firestoreMethods.doc(db, "inventory", id);
-                await firestoreMethods.updateDoc(itemRef, { discount: discountTag });
-            }
-            showToast(`🏷️ 已將 ${selectedItemIds.size} 項商品套用 ${discountTag} 折扣`);
-            await logActivity("🏷️ 批次折扣", "多項商品", `套用 ${discountTag} 標籤至 ${selectedItemIds.size} 筆庫存`);
-            selectedItemIds.clear();
-            updateBatchActionBar();
+            for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { discount: discountTag }); }
+            showToast(`🏷️ 已套用 ${discountTag} 折扣`); await logActivity("🏷️ 批次折扣", "多項商品", `套用 ${discountTag}`); selectedItemIds.clear(); updateBatchActionBar();
         };
 
         window.batchSetSoldOut = async function() {
             if (!db) return;
-            for (const id of selectedItemIds) {
-                const itemRef = firestoreMethods.doc(db, "inventory", id);
-                await firestoreMethods.updateDoc(itemRef, { quantity: 0 });
-            }
-            showToast(`⚪️ 已將 ${selectedItemIds.size} 項商品標示為售完`);
-            await logActivity("⚪️ 批次售完", "多項商品", `將 ${selectedItemIds.size} 筆庫存數量歸零`);
-            selectedItemIds.clear();
-            updateBatchActionBar();
+            for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 }); }
+            showToast(`⚪️ 標示為售完`); await logActivity("⚪️ 批次售完", "多項商品", `歸零`); selectedItemIds.clear(); updateBatchActionBar();
         };
 
         window.batchDelete = async function() {
-            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            if (!db) return;
-            if (confirm(`確定要刪除選取的那 ${selectedItemIds.size} 項商品嗎？`)) {
-                for (const id of selectedItemIds) {
-                    await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
-                }
-                showToast(`❌ 已批次刪除 ${selectedItemIds.size} 項商品`);
-                await logActivity("❌ 批次刪除", "多項商品", `移除 ${selectedItemIds.size} 筆庫存紀錄`);
-                selectedItemIds.clear();
-                updateBatchActionBar();
+            if (currentRole !== 'manager') return alert("🔒 需要店長權限！"); if (!db) return;
+            if (confirm(`確定刪除 ${selectedItemIds.size} 項商品嗎？`)) {
+                for (const id of selectedItemIds) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); }
+                showToast(`❌ 刪除成功`); await logActivity("❌ 批次刪除", "多項商品", `刪除`); selectedItemIds.clear(); updateBatchActionBar();
             }
         };
 
         window.shareToLine = function() {
-            let alertItems = [];
-            currentInventory.forEach(item => {
-                const qty = parseInt(item.quantity) || 0;
-                if (qty > 0) {
-                    const expiryDate = new Date(item.expiry);
-                    expiryDate.setHours(0, 0, 0, 0);
-                    const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                    if (diffDays < 14) {
-                        alertItems.push({ name: item.name, supplier: item.supplier || '未指定', location: item.location || '未指定', expiry: item.expiry, days: diffDays, qty: qty });
-                    }
-                }
-            });
-
-            if (alertItems.length === 0) {
-                alert("🎉 太棒了！當前沒有任何 🔴 屆期或過期商品需要通報！");
-                return;
-            }
-
-            let msg = `📢【門市即期與屆期商品每日通報】\n通報日期：${today.toLocaleDateString('zh-TW')}\n---------------\n`;
+            let alertItems = currentInventory.filter(item => { const qty = parseInt(item.quantity) || 0; return qty > 0 && Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)) < 14; });
+            if (alertItems.length === 0) return alert("🎉 沒有商品需要通報！");
+            let msg = `📢【即期通報】${today.toLocaleDateString('zh-TW')}\n---------------\n`;
             alertItems.forEach((item, index) => {
-                const statusTag = item.days < 0 ? `⚫️ 已過期 (${Math.abs(item.days)}天)` : `🔴 剩 ${item.days} 天`;
-                msg += `${index + 1}. ${item.name} (${item.supplier} | 貨架: ${item.location})\n   - 數量：${item.qty} 件\n   - 期限：${item.expiry} [${statusTag}]\n`;
+                const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
+                msg += `${index + 1}. ${item.name} | ${item.qty}件 | ${diff < 0 ? '過期' : '剩'+diff+'天'}\n`;
             });
-            msg += `---------------\n請值班同仁優先排面調度或貼折扣標籤去化！`;
-
-            const encodedMsg = encodeURIComponent(msg);
-            window.open(`https://line.me/R/msg/text/?${encodedMsg}`, '_blank');
+            window.open(`https://line.me/R/msg/text/?${encodeURIComponent(msg)}`, '_blank');
         };
 
         window.startNFCScan = async function() {
             if ('NDEFReader' in window) {
                 try {
-                    const ndef = new NDEFReader();
-                    await ndef.scan();
-                    showToast("📡 NFC 感應器已啟動，請靠近標籤...");
-                    
-                    ndef.addEventListener("reading", ({ message, serialNumber }) => {
-                        let recordText = `NFC Tag: ${serialNumber}`;
-                        for (const record of message.records) {
-                            if (record.recordType === "text") {
-                                const textDecoder = new TextDecoder(record.encoding);
-                                recordText = textDecoder.decode(record.data);
-                            }
-                        }
-                        document.getElementById('item-name').value = recordText;
-                        speakText(`感應成功，${recordText}`);
-                        showToast(`📡 NFC 感應成功：${recordText}`);
+                    const ndef = new NDEFReader(); await ndef.scan(); showToast("📡 請靠近標籤...");
+                    ndef.addEventListener("reading", ({ message }) => {
+                        let recordText = "NFC Tag";
+                        for (const record of message.records) { if (record.recordType === "text") recordText = new TextDecoder(record.encoding).decode(record.data); }
+                        document.getElementById('item-name').value = recordText; speakText(`感應成功`); showToast(`📡 NFC：${recordText}`);
                     });
-                } catch (error) {
-                    alert("NFC 啟動失敗：" + error);
-                }
-            } else {
-                alert("⚠️ 您的裝置不支援 Web NFC (請使用 Android 上的 Chrome 瀏覽器)。");
-            }
+                } catch (error) { alert("NFC 失敗：" + error); }
+            } else { alert("⚠️ 不支援 Web NFC。"); }
         };
 
         window.toggleChartPanel = function() {
-            const container = document.getElementById('chart-container');
-            const btn = document.getElementById('chart-toggle-btn');
-            if (container.classList.contains('hidden')) {
-                container.classList.remove('hidden');
-                btn.textContent = '收合圖表 ▲';
-            } else {
-                container.classList.add('hidden');
-                btn.textContent = '展開圖表 ▼';
-            }
+            const c = document.getElementById('chart-container'); const b = document.getElementById('chart-toggle-btn');
+            if (c.classList.contains('hidden')) { c.classList.remove('hidden'); b.textContent = '收合圖表 ▲'; } else { c.classList.add('hidden'); b.textContent = '展開圖表 ▼'; }
         };
 
-        window.setFilter = function(filterType) {
-            currentStatusFilter = filterType;
-            currentPage = 1;
-            const filterBtns = ['ALL', 'RED', 'YELLOW', 'GREEN', 'EXPIRED', 'LOW_STOCK', 'SOLD_OUT'];
-            
-            filterBtns.forEach(type => {
+        window.setFilter = function(f) {
+            currentStatusFilter = f; currentPage = 1;
+            ['ALL', 'RED', 'YELLOW', 'GREEN', 'EXPIRED', 'LOW_STOCK', 'SOLD_OUT'].forEach(type => {
                 const btn = document.getElementById(`filter-btn-${type}`);
-                if (btn) {
-                    if (type === filterType) {
-                        btn.className = "px-2.5 py-1 rounded-full bg-blue-600 text-white shadow-sm font-bold";
-                    } else {
-                        btn.className = "px-2.5 py-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300";
-                    }
-                }
+                if (btn) btn.className = (type === f) ? "px-2.5 py-1 rounded-full bg-blue-600 text-white shadow-sm font-bold" : "px-2.5 py-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300";
             });
             renderTable();
         };
 
         function updateSupplierDropdown() {
-            const supplierSelect = document.getElementById('supplier-filter-select');
-            const currentSelected = supplierSelect.value;
-            const suppliers = new Set();
-
-            currentInventory.forEach(item => {
-                if (item.supplier && item.supplier.trim() !== '') {
-                    suppliers.add(item.supplier.trim());
-                }
-            });
-
+            const supplierSelect = document.getElementById('supplier-filter-select'); const currentSelected = supplierSelect.value;
+            const suppliers = new Set(currentInventory.map(item => (item.supplier || '').trim()).filter(Boolean));
             supplierSelect.innerHTML = '<option value="ALL">🚚 所有供應商</option>';
-            suppliers.forEach(sup => {
-                const opt = document.createElement('option');
-                opt.value = sup;
-                opt.textContent = `🚚 ${sup}`;
-                supplierSelect.appendChild(opt);
-            });
-
+            suppliers.forEach(sup => { supplierSelect.appendChild(new Option(`🚚 ${sup}`, sup)); });
             supplierSelect.value = currentSelected;
         }
 
-        function updateChart(red, yellow, green, expired, soldOut) {
-            const ctx = document.getElementById('expiryChart');
-            if (!ctx) return;
-            
-            if (chartInstance) {
-                chartInstance.destroy();
-            }
-
-            chartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['🔴 屆期', '🟡 警告', '🟢 安全', '⚫️ 已過期', '⚪️ 售完'],
-                    datasets: [{
-                        label: '品項數量',
-                        data: [red, yellow, green, expired, soldOut],
-                        backgroundColor: [
-                            'rgba(239, 68, 68, 0.85)',
-                            'rgba(245, 158, 11, 0.85)',
-                            'rgba(34, 197, 94, 0.85)',
-                            'rgba(156, 163, 175, 0.85)',
-                            'rgba(209, 213, 219, 0.85)'
-                        ],
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                    }
-                }
-            });
+        function updateChart(r, y, g, e, s) {
+            const ctx = document.getElementById('expiryChart'); if (!ctx) return;
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, { type: 'bar', data: { labels: ['🔴 屆期', '🟡 警告', '🟢 安全', '⚫️ 過期', '⚪️ 售完'], datasets: [{ data: [r, y, g, e, s], backgroundColor: ['#ef4444', '#f59e0b', '#22c55e', '#9ca3af', '#d1d5db'], borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } } });
         }
 
         function updateDashboardStats() {
-            let totalQty = 0;
-            let redCount = 0;
-            let yellowCount = 0;
-            let greenCount = 0;
-            let expiredCount = 0;
-            let lowCount = 0;
-            let soldOutCount = 0;
-
-            let totalCostVal = 0;
-            let totalRevenueVal = 0;
-            let totalProfitVal = 0;
-            let riskCostVal = 0;
-
+            let tQty=0, rCount=0, yCount=0, gCount=0, eCount=0, lCount=0, sCount=0, tCost=0, tRev=0, tProf=0, riskCost=0;
             currentInventory.forEach(item => {
-                const qty = parseInt(item.quantity) || 0;
-                const price = parseFloat(item.price) || 0;
-                const cost = parseFloat(item.cost) || (price * 0.7);
-                
-                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
-                const itemTotalCost = qty * cost;
-                const itemTotalRevenue = qty * effectivePrice;
-                const itemTotalProfit = itemTotalRevenue - itemTotalCost;
-
-                totalQty += qty;
-
-                if (qty === 0) {
-                    soldOutCount++;
-                } else {
-                    totalCostVal += itemTotalCost;
-                    totalRevenueVal += itemTotalRevenue;
-                    totalProfitVal += itemTotalProfit;
-
-                    if (qty <= 2) lowCount++;
-
-                    const expiryDate = new Date(item.expiry);
-                    expiryDate.setHours(0, 0, 0, 0);
-                    const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-
-                    if (diffDays < 0) {
-                        expiredCount++;
-                        riskCostVal += itemTotalCost;
-                    } else if (diffDays < 14) {
-                        redCount++;
-                        riskCostVal += itemTotalCost;
-                    } else if (diffDays < 30) {
-                        yellowCount++;
-                    } else {
-                        greenCount++;
-                    }
+                const qty = parseInt(item.quantity) || 0; const price = parseFloat(item.price) || 0; const cost = parseFloat(item.cost) || (price * 0.7);
+                const effPrice = getEffectiveUnitPrice(price, item.discount); tQty += qty;
+                if (qty === 0) sCount++; else {
+                    tCost += qty*cost; tRev += qty*effPrice; tProf += qty*(effPrice-cost); if (qty <= 2) lCount++;
+                    const diffDays = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) { eCount++; riskCost += qty*cost; } else if (diffDays < 14) { rCount++; riskCost += qty*cost; } else if (diffDays < 30) { yCount++; } else { gCount++; }
                 }
             });
-
-            const marginRate = totalRevenueVal > 0 ? ((totalProfitVal / totalRevenueVal) * 100).toFixed(1) : "0.0";
-
-            document.getElementById('stat-total-qty').textContent = `${totalQty} 件`;
-            document.getElementById('stat-red-count').textContent = `${redCount} 項`;
-            document.getElementById('stat-yellow-count').textContent = `${yellowCount} 項`;
-            document.getElementById('stat-green-count').textContent = `${greenCount} 項`;
-            document.getElementById('stat-low-count').textContent = `${lowCount} 項`;
-
-            document.getElementById('stat-total-cost').textContent = `$${Math.round(totalCostVal).toLocaleString('zh-TW')}`;
-            document.getElementById('stat-total-value').textContent = `$${Math.round(totalRevenueVal).toLocaleString('zh-TW')}`;
-            document.getElementById('stat-total-profit').textContent = `$${Math.round(totalProfitVal).toLocaleString('zh-TW')}`;
-            document.getElementById('stat-margin-rate').textContent = `${marginRate}%`;
-            document.getElementById('stat-risk-cost').textContent = `$${Math.round(riskCostVal).toLocaleString('zh-TW')}`;
-
-            updateSupplierDropdown();
-            updateChart(redCount, yellowCount, greenCount, expiredCount, soldOutCount);
-            
-            // 數據載入後，自動觸發即期品系統推播檢測
+            document.getElementById('stat-total-qty').textContent = `${tQty} 件`; document.getElementById('stat-red-count').textContent = `${rCount} 項`; document.getElementById('stat-yellow-count').textContent = `${yCount} 項`; document.getElementById('stat-green-count').textContent = `${gCount} 項`; document.getElementById('stat-low-count').textContent = `${lCount} 項`;
+            document.getElementById('stat-total-cost').textContent = `$${Math.round(tCost).toLocaleString('zh-TW')}`; document.getElementById('stat-total-value').textContent = `$${Math.round(tRev).toLocaleString('zh-TW')}`; document.getElementById('stat-total-profit').textContent = `$${Math.round(tProf).toLocaleString('zh-TW')}`;
+            document.getElementById('stat-margin-rate').textContent = `${tRev > 0 ? ((tProf / tRev) * 100).toFixed(1) : "0.0"}%`; document.getElementById('stat-risk-cost').textContent = `$${Math.round(riskCost).toLocaleString('zh-TW')}`;
+            updateSupplierDropdown(); updateChart(rCount, yCount, gCount, eCount, sCount);
             checkAndTriggerPushNotification(false);
         }
 
         window.importCSV = function(e) {
-            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const file = e.target.files[0];
-            if (!file) return;
-
+            if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
+            const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = async function(evt) {
-                const text = evt.target.result;
-                const lines = text.split('\n');
-                let addedCount = 0;
-
+                const lines = evt.target.result.split('\n'); let c = 0;
                 for (let i = 1; i < lines.length; i++) {
-                    const line = lines[i].trim();
-                    if (!line) continue;
-
-                    const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-                    if (cols.length >= 2) {
-                        const name = cols[0];
-                        let discount = "", expiry = "", qty = 1, price = 50, cost = 35, category = "常溫商品", supplier = "未指定", location = "未指定";
-
-                        if (cols.length >= 7) {
-                            category = cols[1] || "常溫商品";
-                            supplier = cols[2] || "未指定";
-                            location = cols[3] || "未指定";
-                            cost = parseFloat(cols[4]) || 35;
-                            price = parseFloat(cols[5]) || 50;
-                            discount = (cols[6] === "正價" || !cols[6]) ? "" : cols[6];
-                            expiry = cols[7];
-                            qty = parseInt(cols[8], 10) || 1;
-                        } else {
-                            expiry = cols[1];
-                            if (cols[2]) qty = parseInt(cols[2], 10) || 1;
-                        }
-
-                        if (name && expiry) {
-                            await firestoreMethods.addDoc(inventoryCol, {
-                                name: name,
-                                barcode: "",
-                                category: category,
-                                supplier: supplier,
-                                location: location,
-                                cost: cost,
-                                price: price,
-                                discount: discount,
-                                quantity: qty,
-                                expiry: expiry
-                            });
-                            addedCount++;
-                        }
+                    const cols = lines[i].trim().split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                    if (cols.length >= 2 && cols[0]) {
+                        await firestoreMethods.addDoc(inventoryCol, { name: cols[0], category: cols[1]||"常溫", supplier: cols[2]||"未指定", location: cols[3]||"", cost: parseFloat(cols[4])||35, price: parseFloat(cols[5])||50, discount: cols[6]||"", expiry: cols[7]||"", quantity: parseInt(cols[8])||1 }); c++;
                     }
                 }
-                showToast(`✅ 成功匯入 ${addedCount} 筆商品資料！`);
-                await logActivity("📤 批次匯入", "CSV檔案匯入", `寫入 ${addedCount} 筆商品資料`);
-                e.target.value = '';
+                showToast(`✅ 匯入 ${c} 筆`); e.target.value = '';
             };
             reader.readAsText(file);
         };
 
         function renderQuickButtons() {
-            const grid = document.getElementById('quick-buttons-grid');
-            grid.innerHTML = '';
-            
-            for (const [barcode, name] of Object.entries(productDatabase)) {
-                const btn = document.createElement('button');
-                btn.type = "button";
-                btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium transition shadow-sm";
-                btn.textContent = name;
-                btn.onclick = function() {
-                    document.getElementById('item-name').value = name;
-                    document.getElementById('item-barcode').value = barcode;
-                };
-                grid.appendChild(btn);
-            }
+            const grid = document.getElementById('quick-buttons-grid'); grid.innerHTML = '';
+            Object.entries(productDatabase).forEach(([b, n]) => {
+                const btn = document.createElement('button'); btn.type = "button"; btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium shadow-sm"; btn.textContent = n;
+                btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; }; grid.appendChild(btn);
+            });
         }
 
         window.toggleScanner = async function() {
-            const container = document.getElementById('scanner-container');
-            if (!container.classList.contains('hidden')) {
-                stopScanner();
-                return;
-            }
-
-            container.classList.remove('hidden');
-            document.getElementById('scanner-btn').textContent = "🔴 關閉相機";
-
+            const c = document.getElementById('scanner-container');
+            if (!c.classList.contains('hidden')) return stopScanner();
+            c.classList.remove('hidden'); document.getElementById('scanner-btn').textContent = "🔴 關閉相機";
             try {
-                if (!html5QrCode) {
-                    html5QrCode = new Html5Qrcode("reader");
-                }
-
-                let lastScannedCode = '';
-                let lastScannedTime = 0;
-
-                await html5QrCode.start(
-                    { facingMode: "environment" },
-                    { fps: 15, qrbox: { width: 240, height: 130 }, aspectRatio: 1.0 },
-                    async (decodedText) => {
-                        const now = Date.now();
-                        if (decodedText === lastScannedCode && now - lastScannedTime < 2000) {
-                            return;
-                        }
-                        lastScannedCode = decodedText;
-                        lastScannedTime = now;
-
-                        const matchedName = productDatabase[decodedText] || `條碼商品 (${decodedText})`;
-                        const isContinuous = document.getElementById('continuous-scan-toggle').checked;
-
-                        document.getElementById('item-name').value = matchedName;
-                        document.getElementById('item-barcode').value = decodedText;
-
-                        if (isContinuous) {
-                            const existingItem = currentInventory.find(item => item.barcode === decodedText || item.name === matchedName);
-                            if (existingItem) {
-                                await window.updateQuantity(existingItem.id, existingItem.name, existingItem.quantity, 1);
-                                speakText(`${matchedName}，數量加一`);
-                                showToast(`⚡ [連續盤點] ${matchedName} 數量 +1`);
-                            } else {
-                                speakText(`掃描到新商品，${matchedName}`);
-                                showToast(`🔔 掃描到新品項：${matchedName}`);
-                            }
-                        } else {
-                            speakText(`辨識成功，${matchedName}`);
-                            showToast(`✅ 成功辨識條碼：${matchedName}`);
-                            stopScanner();
-                        }
-                    },
-                    (errorMessage) => {}
-                );
-            } catch (err) {
-                console.error("相機啟動失敗：", err);
-                alert("無法啟動相機！請確認授權權限。");
-                stopScanner();
-            }
+                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+                let lastScanned = '', lastTime = 0;
+                await html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 240, height: 130 } }, async (decodedText) => {
+                    if (decodedText === lastScanned && Date.now() - lastTime < 2000) return;
+                    lastScanned = decodedText; lastTime = Date.now();
+                    const n = productDatabase[decodedText] || `條碼 (${decodedText})`;
+                    document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = decodedText;
+                    if (document.getElementById('continuous-scan-toggle').checked) {
+                        const item = currentInventory.find(i => i.barcode === decodedText || i.name === n);
+                        if (item) { await window.updateQuantity(item.id, item.name, item.quantity, 1); speakText(`${n} 加一`); showToast(`⚡ ${n} +1`); } else { speakText(`新商品 ${n}`); showToast(`🔔 新品：${n}`); }
+                    } else { speakText(`成功 ${n}`); showToast(`✅ 辨識：${n}`); stopScanner(); }
+                }, () => {});
+            } catch (err) { alert("相機啟動失敗"); stopScanner(); }
         };
 
         window.stopScanner = function() {
-            if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('scanner-container').classList.add('hidden');
-                    document.getElementById('scanner-btn').textContent = "📷 掃碼";
-                }).catch(err => {
-                    document.getElementById('scanner-container').classList.add('hidden');
-                    document.getElementById('scanner-btn').textContent = "📷 掃碼";
-                });
-            } else {
-                document.getElementById('scanner-container').classList.add('hidden');
-                document.getElementById('scanner-btn').textContent = "📷 掃碼";
-            }
+            if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop().then(() => { document.getElementById('scanner-container').classList.add('hidden'); document.getElementById('scanner-btn').textContent = "📷 掃碼"; }).catch(()=>{});
+            else { document.getElementById('scanner-container').classList.add('hidden'); document.getElementById('scanner-btn').textContent = "📷 掃碼"; }
         };
 
-        const nameInput = document.getElementById('item-name');
-        const suggestionsBox = document.getElementById('suggestions-box');
-
+        const nameInput = document.getElementById('item-name'); const suggestionsBox = document.getElementById('suggestions-box');
         nameInput.addEventListener('input', function() {
-            const keyword = this.value.trim().toLowerCase();
-            suggestionsBox.innerHTML = '';
-            
-            if (keyword.length === 0) {
-                suggestionsBox.classList.add('hidden');
-                return;
-            }
-
-            const matches = Object.entries(productDatabase).filter(([barcode, name]) => {
-                return name.toLowerCase().includes(keyword) || barcode.toLowerCase().includes(keyword);
-            });
-
+            const k = this.value.trim().toLowerCase(); suggestionsBox.innerHTML = '';
+            if (k.length === 0) return suggestionsBox.classList.add('hidden');
+            const matches = Object.entries(productDatabase).filter(([b, n]) => n.toLowerCase().includes(k) || b.toLowerCase().includes(k));
             if (matches.length > 0) {
                 suggestionsBox.classList.remove('hidden');
-                matches.forEach(([barcode, name]) => {
-                    const div = document.createElement('div');
-                    div.className = "px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-gray-600 cursor-pointer text-xs border-b dark:border-gray-600 flex justify-between items-center";
-                    div.innerHTML = `<span class="font-medium text-gray-800 dark:text-white">${name}</span><span class="text-[10px] text-gray-400">${barcode}</span>`;
-                    div.onclick = function() {
-                        nameInput.value = name;
-                        document.getElementById('item-barcode').value = barcode;
-                        suggestionsBox.classList.add('hidden');
-                    };
-                    suggestionsBox.appendChild(div);
+                matches.forEach(([b, n]) => {
+                    const div = document.createElement('div'); div.className = "px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs border-b flex justify-between"; div.innerHTML = `<span>${n}</span><span class="text-gray-400">${b}</span>`;
+                    div.onclick = () => { nameInput.value = n; document.getElementById('item-barcode').value = b; suggestionsBox.classList.add('hidden'); }; suggestionsBox.appendChild(div);
                 });
-            } else {
-                suggestionsBox.classList.add('hidden');
-            }
+            } else suggestionsBox.classList.add('hidden');
         });
+        document.addEventListener('click', e => { if (!nameInput.contains(e.target) && !suggestionsBox.contains(e.target)) suggestionsBox.classList.add('hidden'); });
 
-        document.addEventListener('click', function(e) {
-            if (!nameInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
-                suggestionsBox.classList.add('hidden');
-            }
-        });
-
-        window.switchView = function(viewType) {
-            currentView = viewType;
-            const listContainer = document.getElementById('view-list-container');
-            const calContainer = document.getElementById('view-calendar-container');
-            const logsContainer = document.getElementById('view-logs-container');
-            
-            const btnList = document.getElementById('btn-view-list');
-            const btnCal = document.getElementById('btn-view-calendar');
-            const btnLogs = document.getElementById('btn-view-logs');
-
-            btnList.className = "px-3 py-1.5 rounded-md font-medium transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
-            btnCal.className = "px-3 py-1.5 rounded-md font-medium transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
-            btnLogs.className = "px-3 py-1.5 rounded-md font-medium transition text-gray-600 dark:text-gray-300 hover:text-gray-800 whitespace-nowrap";
-
-            if (viewType === 'list') {
-                listContainer.classList.remove('hidden');
-                calContainer.classList.add('hidden');
-                logsContainer.classList.add('hidden');
-                btnList.className = "px-3 py-1.5 rounded-md font-medium transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
-                renderTable();
-            } else if (viewType === 'calendar') {
-                listContainer.classList.add('hidden');
-                calContainer.classList.remove('hidden');
-                logsContainer.classList.add('hidden');
-                btnCal.className = "px-3 py-1.5 rounded-md font-medium transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
-                renderCalendar();
-            } else if (viewType === 'logs') {
-                listContainer.classList.add('hidden');
-                calContainer.classList.add('hidden');
-                logsContainer.classList.remove('hidden');
-                btnLogs.className = "px-3 py-1.5 rounded-md font-medium transition bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-300 whitespace-nowrap";
-                renderLogs();
-            }
+        window.switchView = function(view) {
+            currentView = view;
+            ['list', 'calendar', 'logs'].forEach(v => {
+                document.getElementById(`view-${v}-container`).classList.toggle('hidden', v !== view);
+                document.getElementById(`btn-view-${v}`).className = (v === view) ? "px-3 py-1.5 rounded-md font-medium bg-white shadow-sm text-blue-600" : "px-3 py-1.5 rounded-md font-medium text-gray-600 hover:text-gray-800";
+            });
+            if (view === 'list') renderTable(); else if (view === 'calendar') renderCalendar(); else if (view === 'logs') renderLogs();
         };
 
-        function calculateStatus(expiryDateStr, quantity) {
-            const qty = parseInt(quantity) || 0;
-            if (qty === 0) {
-                return {
-                    diffDays: 0,
-                    status: '已售完',
-                    rowClass: 'bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-75',
-                    badgeClass: 'bg-gray-200 dark:bg-gray-700 border-gray-300 text-gray-600 dark:text-gray-300',
-                    statusCategory: 'SOLD_OUT'
-                };
-            }
-
-            const expiryDate = new Date(expiryDateStr);
-            expiryDate.setHours(0, 0, 0, 0);
-            const diffTime = expiryDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            let status = '', rowClass = '', badgeClass = '', statusCategory = '';
-            if (diffDays < 0) {
-                status = '已過期'; rowClass = 'bg-gray-200 dark:bg-gray-800 text-gray-500'; badgeClass = 'bg-gray-100 border-gray-300 text-gray-700'; statusCategory = 'EXPIRED';
-            } else if (diffDays < 14) {
-                status = '屆期 (<14天)'; rowClass = 'bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200'; badgeClass = 'bg-red-50 border-red-200 text-red-700'; statusCategory = 'RED';
-            } else if (diffDays < 30) {
-                status = '警告 (<30天)'; rowClass = 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-900 dark:text-yellow-200'; badgeClass = 'bg-yellow-50 border-yellow-200 text-yellow-800'; statusCategory = 'YELLOW';
-            } else {
-                status = '安全'; rowClass = 'bg-green-50 dark:bg-green-950/40 text-green-900 dark:text-green-200'; badgeClass = 'bg-green-50 border-green-200 text-green-700'; statusCategory = 'GREEN';
-            }
-            return { diffDays, status, rowClass, badgeClass, statusCategory };
+        function calculateStatus(e, q) {
+            const qty = parseInt(q) || 0; if (qty === 0) return { diffDays: 0, status: '已售完', rowClass: 'bg-gray-100 text-gray-400 opacity-75', badgeClass: 'bg-gray-200 text-gray-600', statusCategory: 'SOLD_OUT' };
+            const diffDays = Math.ceil((new Date(e).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) return { diffDays, status: '已過期', rowClass: 'bg-gray-200 text-gray-500', badgeClass: 'bg-gray-100 text-gray-700', statusCategory: 'EXPIRED' };
+            if (diffDays < 14) return { diffDays, status: '屆期 (<14天)', rowClass: 'bg-red-50 text-red-900', badgeClass: 'bg-red-50 text-red-700', statusCategory: 'RED' };
+            if (diffDays < 30) return { diffDays, status: '警告 (<30天)', rowClass: 'bg-yellow-50 text-yellow-900', badgeClass: 'bg-yellow-50 text-yellow-800', statusCategory: 'YELLOW' };
+            return { diffDays, status: '安全', rowClass: 'bg-green-50 text-green-900', badgeClass: 'bg-green-50 text-green-700', statusCategory: 'GREEN' };
         }
 
         window.renderTable = function() {
-            const tbody = document.getElementById('inventory-list');
-            const keyword = document.getElementById('search-input').value.trim().toLowerCase();
-            const sortMode = document.getElementById('sort-select').value;
-            const categoryFilter = document.getElementById('category-filter-select').value;
-            const supplierFilter = document.getElementById('supplier-filter-select').value;
-            tbody.innerHTML = '';
-
-            let filteredData = currentInventory.filter(item => {
-                const nameMatch = item.name.toLowerCase().includes(keyword);
-                const locationMatch = (item.location || '').toLowerCase().includes(keyword);
-                const supplierMatchSearch = (item.supplier || '').toLowerCase().includes(keyword);
-
-                const categoryMatch = (categoryFilter === 'ALL' || (item.category || '常溫商品') === categoryFilter);
-                const supplierMatchFilter = (supplierFilter === 'ALL' || (item.supplier || '未指定') === supplierFilter);
-                
-                const { statusCategory } = calculateStatus(item.expiry, item.quantity);
-                const qty = parseInt(item.quantity) || 0;
-                const isLowStock = (qty > 0 && qty <= 2);
-
-                if ((!nameMatch && !locationMatch && !supplierMatchSearch) || !categoryMatch || !supplierMatchFilter) return false;
-
-                if (currentStatusFilter === 'ALL') return true;
-                if (currentStatusFilter === 'LOW_STOCK') return isLowStock;
-                return statusCategory === currentStatusFilter;
+            const tbody = document.getElementById('inventory-list'); tbody.innerHTML = '';
+            const k = document.getElementById('search-input').value.trim().toLowerCase(), s = document.getElementById('sort-select').value, c = document.getElementById('category-filter-select').value, sf = document.getElementById('supplier-filter-select').value;
+            let fd = currentInventory.filter(item => {
+                if (!((item.name||'').toLowerCase().includes(k) || (item.location||'').toLowerCase().includes(k) || (item.supplier||'').toLowerCase().includes(k))) return false;
+                if (c !== 'ALL' && (item.category || '常溫商品') !== c) return false; if (sf !== 'ALL' && (item.supplier || '未指定') !== sf) return false;
+                const stat = calculateStatus(item.expiry, item.quantity);
+                if (currentStatusFilter === 'ALL') return true; if (currentStatusFilter === 'LOW_STOCK') return (parseInt(item.quantity)>0 && parseInt(item.quantity)<=2); return stat.statusCategory === currentStatusFilter;
             });
-
-            filteredData.sort((a, b) => {
-                const qtyA = parseInt(a.quantity) || 0;
-                const qtyB = parseInt(b.quantity) || 0;
-                const priceA = parseFloat(a.price) || 0;
-                const priceB = parseFloat(b.price) || 0;
-                const costA = parseFloat(a.cost) || (priceA * 0.7);
-                const costB = parseFloat(b.cost) || (priceB * 0.7);
-
-                const effPriceA = getEffectiveUnitPrice(priceA, a.discount);
-                const effPriceB = getEffectiveUnitPrice(priceB, b.discount);
-
-                const profitA = (effPriceA - costA) * qtyA;
-                const profitB = (effPriceB - costB) * qtyB;
-
-                if (sortMode === 'EXPIRY_ASC') {
-                    return new Date(a.expiry) - new Date(b.expiry);
-                } else if (sortMode === 'PROFIT_DESC') {
-                    return profitB - profitA;
-                } else if (sortMode === 'QTY_ASC') {
-                    return qtyA - qtyB;
-                } else if (sortMode === 'QTY_DESC') {
-                    return qtyB - qtyA;
-                } else if (sortMode === 'PRICE_DESC') {
-                    return priceB - priceA;
-                } else if (sortMode === 'NAME_ASC') {
-                    return a.name.localeCompare(b.name, 'zh-TW');
-                }
-                return 0;
+            fd.sort((a, b) => {
+                const qa=parseInt(a.quantity)||0, qb=parseInt(b.quantity)||0, pa=parseFloat(a.price)||0, pb=parseFloat(b.price)||0;
+                if (s === 'EXPIRY_ASC') return new Date(a.expiry) - new Date(b.expiry);
+                if (s === 'PROFIT_DESC') return (qb*(getEffectiveUnitPrice(pb,b.discount)-(parseFloat(b.cost)||(pb*.7)))) - (qa*(getEffectiveUnitPrice(pa,a.discount)-(parseFloat(a.cost)||(pa*.7))));
+                if (s === 'QTY_ASC') return qa - qb; if (s === 'QTY_DESC') return qb - qa; if (s === 'PRICE_DESC') return pb - pa; return a.name.localeCompare(b.name, 'zh-TW');
             });
-
-            const totalFilteredCount = filteredData.length;
-            const totalPages = Math.ceil(totalFilteredCount / pageSize) || 1;
-            if (currentPage > totalPages) currentPage = totalPages;
-
-            document.getElementById('item-count-text').textContent = `顯示 ${totalFilteredCount} 項 (共 ${currentInventory.length} 項)`;
-            document.getElementById('page-info-text').textContent = `第 ${currentPage} / ${totalPages} 頁`;
-            document.getElementById('btn-prev-page').disabled = (currentPage <= 1);
-            document.getElementById('btn-next-page').disabled = (currentPage >= totalPages);
-
-            if (totalFilteredCount === 0) {
-                tbody.innerHTML = `<tr><td colspan="12" class="px-4 py-6 text-center text-gray-400">沒有找到符合條件的商品資料</td></tr>`;
-                return;
-            }
-
-            const pagedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-            
-            pagedData.forEach(item => {
-                const { diffDays, status, rowClass } = calculateStatus(item.expiry, item.quantity);
-                const qty = parseInt(item.quantity) || 0;
-                const price = parseFloat(item.price) || 0;
-                const cost = parseFloat(item.cost) || Math.round(price * 0.7);
-                
-                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
-                const unitProfit = effectivePrice - cost;
-                const totalProfit = unitProfit * qty;
-                const subtotal = qty * effectivePrice;
-
-                const categoryText = item.category || '常溫商品';
-                const supplierText = item.supplier || '未指定';
-                const locationText = item.location || '未指定';
+            const totPages = Math.ceil(fd.length / pageSize) || 1; if (currentPage > totPages) currentPage = totPages;
+            document.getElementById('item-count-text').textContent = `顯示 ${fd.length} 項`; document.getElementById('page-info-text').textContent = `第 ${currentPage} / ${totPages} 頁`;
+            document.getElementById('btn-prev-page').disabled = (currentPage <= 1); document.getElementById('btn-next-page').disabled = (currentPage >= totPages);
+            fd.slice((currentPage - 1) * pageSize, currentPage * pageSize).forEach(item => {
+                const { diffDays, status, rowClass } = calculateStatus(item.expiry, item.quantity); const q=parseInt(item.quantity)||0, p=parseFloat(item.price)||0, c=parseFloat(item.cost)||Math.round(p*.7), ep=getEffectiveUnitPrice(p, item.discount);
                 const isChecked = selectedItemIds.has(item.id);
-
-                let statusIcon = (qty === 0) ? '⚪️ ' : status.includes('已過期') ? '⚫️ ' : status.includes('屆期') ? '🔴 ' : status.includes('警告') ? '🟡 ' : '🟢 ';
-                const isLowStock = (qty > 0 && qty <= 2);
-
-                let discountBadge = '';
-                if (item.discount && qty > 0) {
-                    discountBadge = `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">🏷️ ${item.discount}</span>`;
-                }
-
-                let lowStockBadge = isLowStock ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-600 text-white shadow-sm">⚠️低庫存</span>` : '';
-
-                let profitBadgeClass = unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold animate-pulse";
-
-                let priceColHTML = currentRole === 'manager' 
-                    ? `<span class="text-gray-400 text-[10px]">$${cost} /</span> <span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>` 
-                    : `<span class="font-bold text-indigo-600 dark:text-indigo-300">$${price}</span>`;
-
-                let profitColHTML = currentRole === 'manager'
-                    ? `<td class="manager-only px-4 py-2 font-mono ${profitBadgeClass}">
-                        ${unitProfit >= 0 ? '+' : ''}$${Math.round(unitProfit)} <span class="text-[9px] text-gray-400 font-normal">(共$${Math.round(totalProfit)})</span>
-                       </td>`
-                    : '';
-
-                let deleteBtnHTML = currentRole === 'manager'
-                    ? `<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 hover:text-red-700 font-medium bg-white px-1.5 py-0.5 rounded border border-red-200 text-[10px]">刪除</button>`
-                    : '';
-
-                const tr = document.createElement('tr');
-                tr.className = `hover:bg-opacity-80 transition ${rowClass}`;
-                tr.innerHTML = `
-                    <td class="px-3 py-2 text-center no-print">
-                        <input type="checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} onclick="toggleItemSelection('${item.id}')" class="item-checkbox rounded text-blue-600">
-                    </td>
-                    <td class="px-4 py-2 font-medium flex items-center">
-                        <div>
-                            <div class="font-bold text-gray-800 dark:text-gray-100 text-xs">${item.name}</div>
-                            <div class="text-[10px] text-gray-500 dark:text-gray-400">${categoryText}</div>
-                        </div>
-                        ${discountBadge}
-                        ${lowStockBadge}
-                    </td>
-                    <td class="px-4 py-2 text-gray-700 dark:text-gray-300 text-[11px]">
-                        🚚 ${supplierText}
-                    </td>
-                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
-                        <span class="inline-flex items-center gap-0.5 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-[10px] border border-gray-200 dark:border-gray-600 font-mono">
-                            📍 ${locationText}
-                        </span>
-                    </td>
-                    <td class="px-4 py-2 font-mono text-gray-700 dark:text-gray-300">
-                        ${priceColHTML}
-                    </td>
-                    ${profitColHTML}
-                    <td class="px-4 py-2 text-[11px]">${item.expiry}</td>
-                    <td class="px-4 py-2 font-bold">${qty === 0 ? '-' : (diffDays < 0 ? '已過期 ' + Math.abs(diffDays) : diffDays + ' 天')}</td>
-                    <td class="px-4 py-2 text-center">
-                        <div class="flex items-center justify-center gap-2">
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 font-bold text-gray-600 dark:text-gray-200 shadow-sm no-print">-</button>
-                            <span class="w-6 text-center font-bold text-sm">${item.quantity}</span>
-                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 font-bold text-gray-600 dark:text-gray-200 shadow-sm no-print">+</button>
-                        </div>
-                    </td>
-                    <td class="px-4 py-2 font-bold font-mono text-indigo-700 dark:text-indigo-400">$${Math.round(subtotal).toLocaleString('zh-TW')}</td>
-                    <td class="px-4 py-2 font-semibold">${statusIcon}${status}</td>
-                    <td class="px-4 py-2 text-center no-print">
-                        <div class="flex justify-center gap-1">
-                            <button onclick="openBarcodeModal('${item.name.replace(/'/g, "\\'")}', '${item.barcode || ''}', ${price}, '${item.expiry}')" class="text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[10px]">🏷️標籤</button>
-                            ${qty > 0 ? `<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 hover:text-gray-900 font-medium bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 text-[10px]">售完</button>` : ''}
-                            ${deleteBtnHTML}
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+                tbody.innerHTML += `
+                    <tr class="hover:bg-opacity-80 transition ${rowClass}">
+                        <td class="px-3 py-2 text-center no-print"><input type="checkbox" value="${item.id}" ${isChecked?'checked':''} onclick="toggleItemSelection('${item.id}')" class="item-checkbox"></td>
+                        <td class="px-4 py-2 font-medium"><div><div class="font-bold text-xs">${item.name}</div><div class="text-[10px] text-gray-500">${item.category||'常溫'}</div></div>
+                        ${item.discount&&q>0 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-100 text-purple-700">🏷️ ${item.discount}</span>`:''}
+                        ${q>0&&q<=2 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-600 text-white">⚠️低庫存</span>`:''}</td>
+                        <td class="px-4 py-2 text-[11px]">🚚 ${item.supplier||'未指定'}</td>
+                        <td class="px-4 py-2"><span class="bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">📍 ${item.location||''}</span></td>
+                        <td class="px-4 py-2">${currentRole==='manager'?`<span class="text-gray-400 text-[10px]">$${c}/</span> <span class="font-bold text-indigo-600">$${p}</span>`:`<span class="font-bold text-indigo-600">$${p}</span>`}</td>
+                        ${currentRole==='manager'?`<td class="manager-only px-4 py-2 ${ep-c>=0?'text-emerald-600':'text-rose-600 font-bold'}">${ep-c>=0?'+':''}$${Math.round(ep-c)}</td>`:''}
+                        <td class="px-4 py-2 text-[11px]">${item.expiry}</td>
+                        <td class="px-4 py-2 font-bold">${q===0?'-':(diffDays<0?'已過期 '+Math.abs(diffDays):diffDays+' 天')}</td>
+                        <td class="px-4 py-2 text-center"><div class="flex items-center justify-center gap-2">
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, -1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">-</button>
+                            <span class="w-6 font-bold">${item.quantity}</span>
+                            <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">+</button></div></td>
+                        <td class="px-4 py-2 font-bold text-indigo-700">$${Math.round(q*ep).toLocaleString('zh-TW')}</td>
+                        <td class="px-4 py-2">${(q===0)?'⚪️':diffDays<0?'⚫️':diffDays<14?'🔴':diffDays<30?'🟡':'🟢'} ${status}</td>
+                        <td class="px-4 py-2 text-center no-print flex gap-1">
+                            <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
+                            ${q>0?`<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
+                            ${currentRole==='manager'?`<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
+                        </td>
+                    </tr>`;
             });
         };
 
         function renderLogs() {
-            const tbody = document.getElementById('logs-list');
-            tbody.innerHTML = '';
-            
-            document.getElementById('log-count-text').textContent = `共記錄 ${currentLogs.length} 筆異動足跡`;
-
-            if (currentLogs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-gray-400">目前尚無任何異動紀錄</td></tr>`;
-                return;
-            }
-
+            const tbody = document.getElementById('logs-list'); tbody.innerHTML = ''; document.getElementById('log-count-text').textContent = `共 ${currentLogs.length} 筆`;
             currentLogs.forEach(log => {
-                const dateObj = new Date(log.timestamp);
-                const timeStr = isNaN(dateObj) ? log.timestamp : dateObj.toLocaleString('zh-TW');
-
-                let badgeColor = "bg-gray-100 text-gray-800";
-                if (log.type?.includes('新增')) badgeColor = "bg-green-100 text-green-800";
-                else if (log.type?.includes('調整')) badgeColor = "bg-blue-100 text-blue-800";
-                else if (log.type?.includes('售完')) badgeColor = "bg-gray-200 text-gray-800";
-                else if (log.type?.includes('刪除')) badgeColor = "bg-red-100 text-red-800";
-                else if (log.type?.includes('還原')) badgeColor = "bg-amber-100 text-amber-800";
-
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700 transition";
-                tr.innerHTML = `
-                    <td class="px-4 py-2 text-[10px] text-gray-500 dark:text-gray-400 font-mono">${timeStr}</td>
-                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${badgeColor}">${log.type}</span></td>
-                    <td class="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">${log.itemName}</td>
-                    <td class="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">${log.detail}</td>
-                `;
-                tbody.appendChild(tr);
+                const ts = isNaN(new Date(log.timestamp)) ? log.timestamp : new Date(log.timestamp).toLocaleString('zh-TW');
+                let bg = "bg-gray-100"; if (log.type?.includes('新增')) bg="bg-green-100 text-green-800"; else if(log.type?.includes('調整')) bg="bg-blue-100 text-blue-800"; else if(log.type?.includes('刪除')) bg="bg-red-100 text-red-800";
+                tbody.innerHTML += `<tr><td class="px-4 py-2 text-[10px] font-mono text-gray-500">${ts}</td><td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-[10px] ${bg}">${log.type}</span></td><td class="px-4 py-2 font-medium">${log.itemName}</td><td class="px-4 py-2 text-xs">${log.detail}</td></tr>`;
             });
         }
 
         function renderCalendar() {
             document.getElementById('calendar-month-title').textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
-            const grid = document.getElementById('calendar-grid');
-            grid.innerHTML = '';
-
-            const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
-            const totalDays = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-
-            const expiryMap = {};
-            currentInventory.forEach(item => {
-                if (!expiryMap[item.expiry]) expiryMap[item.expiry] = [];
-                expiryMap[item.expiry].push(item);
-            });
-
-            for (let i = 0; i < firstDayIndex; i++) {
-                const emptyCell = document.createElement('div');
-                emptyCell.className = "h-24 bg-gray-50 dark:bg-gray-800/50 rounded border border-transparent";
-                grid.appendChild(emptyCell);
-            }
-
-            for (let day = 1; day <= totalDays; day++) {
-                const monthStr = String(calendarMonth + 1).padStart(2, '0');
-                const dayStr = String(day).padStart(2, '0');
-                const dateKey = `${calendarYear}-${monthStr}-${dayStr}`;
-
-                const cell = document.createElement('div');
-                cell.className = "h-24 bg-white dark:bg-gray-800 rounded border dark:border-gray-700 p-1.5 overflow-y-auto flex flex-col justify-between";
-
-                const isToday = (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate());
-                let dayHeaderClass = "font-bold text-xs mb-1 flex justify-between items-center";
-                if (isToday) dayHeaderClass += " text-blue-600 bg-blue-50 dark:bg-blue-900/40 px-1 rounded";
-                else dayHeaderClass += " text-gray-700 dark:text-gray-300";
-
-                let htmlContent = `<div class="${dayHeaderClass}"><span>${day}</span>`;
-                if (expiryMap[dateKey] && expiryMap[dateKey].length > 0) {
-                    htmlContent += `<span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[9px] px-1 rounded-full">${expiryMap[dateKey].length}項</span>`;
-                }
-                htmlContent += `</div><div class="space-y-0.5">`;
-
-                if (expiryMap[dateKey]) {
-                    expiryMap[dateKey].forEach(item => {
-                        const { diffDays, badgeClass } = calculateStatus(item.expiry, item.quantity);
-                        const qty = parseInt(item.quantity) || 0;
-                        let icon = (qty === 0) ? '⚪️' : diffDays < 0 ? '⚫️' : diffDays < 14 ? '🔴' : diffDays < 30 ? '🟡' : '🟢';
-                        htmlContent += `<div class="border text-[10px] px-1 py-0.5 rounded truncate ${badgeClass}" title="${item.name}">${icon} ${item.name} (${item.quantity})</div>`;
-                    });
-                }
-                htmlContent += `</div>`;
-                cell.innerHTML = htmlContent;
-                grid.appendChild(cell);
+            const grid = document.getElementById('calendar-grid'); grid.innerHTML = '';
+            const fd = new Date(calendarYear, calendarMonth, 1).getDay(), td = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+            const expMap = {}; currentInventory.forEach(i => { if(!expMap[i.expiry]) expMap[i.expiry]=[]; expMap[i.expiry].push(i); });
+            for (let i = 0; i < fd; i++) grid.innerHTML += `<div class="h-24 bg-gray-50 rounded"></div>`;
+            for (let day = 1; day <= td; day++) {
+                const dk = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                let html = `<div class="h-24 bg-white border p-1 overflow-y-auto"><div class="text-xs font-bold mb-1 flex justify-between ${day===today.getDate()&&calendarMonth===today.getMonth()?'text-blue-600 bg-blue-50':''}">${day}`;
+                if (expMap[dk]) html += `<span class="bg-gray-100 text-[9px] px-1 rounded">${expMap[dk].length}項</span></div><div class="space-y-0.5">`; else html += `</div><div class="space-y-0.5">`;
+                (expMap[dk]||[]).forEach(item => {
+                    const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)), q = parseInt(item.quantity)||0;
+                    const c = q===0 ? 'bg-gray-200' : diff<0 ? 'bg-gray-100' : diff<14 ? 'bg-red-100 text-red-800' : diff<30 ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800';
+                    html += `<div class="text-[9px] px-1 truncate rounded ${c}">${q===0?'⚪️':diff<0?'⚫️':diff<14?'🔴':diff<30?'🟡':'🟢'} ${item.name}</div>`;
+                });
+                grid.innerHTML += html + `</div></div>`;
             }
         }
+        window.changeMonth = function(dir) { calendarMonth += dir; if(calendarMonth>11){calendarMonth=0;calendarYear++;} else if(calendarMonth<0){calendarMonth=11;calendarYear--;} renderCalendar(); };
 
-        window.changeMonth = function(direction) {
-            calendarMonth += direction;
-            if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-            else if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-            renderCalendar();
-        };
-
-        document.getElementById('search-input').addEventListener('input', function() {
-            if (currentView === 'list') resetAndRender();
-        });
-
-        // 初始化權限與推播按鈕燈號
-        updateNotificationButtonUI();
+        document.getElementById('search-input').addEventListener('input', () => { if(currentView === 'list') resetAndRender(); });
+        updateNotificationButtonUI(); updateNetworkStatus();
 
         try {
-            document.getElementById('sync-status').textContent = '連線中...';
-            document.getElementById('sync-status').className = 'bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold animate-pulse';
-
+            document.getElementById('sync-status').textContent = '連線登入中...';
             const firebaseApp = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js");
             const firestore = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
             firestoreMethods = firestore;
 
-            const firebaseConfig = {
-                apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI",
-                authDomain: "market-inventory-ef68c.firebaseapp.com",
-                projectId: "market-inventory-ef68c",
-                storageBucket: "market-inventory-ef68c.firebasestorage.app",
-                messagingSenderId: "307248314866",
-                appId: "1:307248314866:web:97f3edb8e9e47a22ed536b",
-                measurementId: "G-TSC3T2W3MD"
-            };
-
+            const firebaseConfig = { apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI", authDomain: "market-inventory-ef68c.firebaseapp.com", projectId: "market-inventory-ef68c", storageBucket: "market-inventory-ef68c.firebasestorage.app", messagingSenderId: "307248314866", appId: "1:307248314866:web:97f3edb8e9e47a22ed536b" };
             const app = firebaseApp.initializeApp(firebaseConfig);
-            db = firestore.getFirestore(app);
-            inventoryCol = firestore.collection(db, "inventory");
-            productsCol = firestore.collection(db, "products");
-            logsCol = firestore.collection(db, "audit_logs");
-
-            firestore.onSnapshot(productsCol, (snapshot) => {
-                if (snapshot.empty) {
-                    for (const [barcode, name] of Object.entries(defaultProducts)) {
-                        firestore.addDoc(productsCol, { barcode, name });
-                    }
-                } else {
-                    productDatabase = {};
-                    snapshot.forEach((docSnap) => {
-                        const data = docSnap.data();
-                        if (data.barcode && data.name) {
-                            productDatabase[data.barcode] = data.name;
-                        }
-                    });
-                    renderQuickButtons();
-                }
+            
+            // 🔥 啟用 Firestore PWA 離線持久化快取 (Offline Persistence)
+            db = firestore.initializeFirestore(app, {
+                localCache: firestore.persistentLocalCache()
             });
 
-            firestore.onSnapshot(logsCol, (snapshot) => {
-                currentLogs = [];
-                snapshot.forEach((docSnap) => {
-                    currentLogs.push({ id: docSnap.id, ...docSnap.data() });
-                });
-                currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                if (currentView === 'logs') renderLogs();
+            inventoryCol = firestore.collection(db, "inventory"); productsCol = firestore.collection(db, "products"); logsCol = firestore.collection(db, "audit_logs");
+
+            firestore.onSnapshot(productsCol, { includeMetadataChanges: true }, (snapshot) => {
+                if (snapshot.empty && navigator.onLine) { Object.entries(defaultProducts).forEach(([b, n]) => firestore.addDoc(productsCol, { barcode: b, name: n })); } 
+                else { productDatabase = {}; snapshot.forEach(doc => { const d = doc.data(); if(d.barcode) productDatabase[d.barcode] = d.name; }); renderQuickButtons(); }
             });
 
-            firestore.onSnapshot(inventoryCol, (snapshot) => {
-                currentInventory = [];
-                snapshot.forEach((docSnap) => {
-                    currentInventory.push({ id: docSnap.id, ...docSnap.data() });
-                });
+            firestore.onSnapshot(logsCol, { includeMetadataChanges: true }, (snapshot) => {
+                currentLogs = []; snapshot.forEach(doc => currentLogs.push({ id: doc.id, ...doc.data() }));
+                currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); if (currentView === 'logs') renderLogs();
+            });
 
+            firestore.onSnapshot(inventoryCol, { includeMetadataChanges: true }, (snapshot) => {
+                currentInventory = []; snapshot.forEach(doc => currentInventory.push({ id: doc.id, ...doc.data() }));
                 updateDashboardStats();
-
-                if (currentView === 'list') renderTable();
-                else if (currentView === 'calendar') renderCalendar();
+                if (currentView === 'list') renderTable(); else if (currentView === 'calendar') renderCalendar();
                 
-                document.getElementById('sync-status').textContent = '✅ 已連線';
-                document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold';
-            }, (error) => {
-                console.error("Firestore 權限錯誤: ", error);
-                document.getElementById('sync-status').textContent = '⚠️ 權限錯誤';
-                document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
-            });
+                // 若是由本機快取觸發，且在離線狀態，不覆蓋離線 UI 狀態
+                if (navigator.onLine) {
+                    document.getElementById('sync-status').textContent = snapshot.metadata.hasPendingWrites ? '🔄 同步中...' : '✅ 已連線 (同步中)';
+                    document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold shadow-sm';
+                }
+            }, (error) => { console.error("Firestore 錯誤", error); });
 
-        } catch (e) {
-            console.error("Firebase 載入崩潰: ", e);
-            document.getElementById('sync-status').textContent = '❌ 載入失敗';
-            document.getElementById('sync-status').className = 'bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold';
-        }
+        } catch (e) { console.error("Firebase 載入崩潰", e); }
 
         window.updateQuantity = async function(id, name, currentQty, delta) {
-            if (!db) return alert("連線異常，無法更新資料");
-            let newQty = currentQty + delta;
-            if (newQty < 0) newQty = 0;
-            const itemRef = firestoreMethods.doc(db, "inventory", id);
-            await firestoreMethods.updateDoc(itemRef, { quantity: newQty });
-
-            if (newQty === 0) {
-                showToast(`⚪️ ${name} 數量已清零並標示為售完`);
-                await logActivity("⚪️ 商品售完", name, "數量減至 0，自動切換為已售完狀態");
-            } else {
-                showToast(`🔄 ${name} 數量調整為 ${newQty}`);
-                const actionText = delta > 0 ? `數量增加 +${delta} (總數: ${newQty})` : `數量減少 ${delta} (總數: ${newQty})`;
-                await logActivity("🔄 數量調整", name, actionText);
-            }
+            let newQty = currentQty + delta; if (newQty < 0) newQty = 0;
+            // 直接操作，離線時 Firestore 會存入 IndexedDB 等待連線後上傳
+            await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: newQty });
+            if (newQty === 0) { showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, "清零"); } 
+            else { showToast(`🔄 ${name} 數量調整為 ${newQty}`); await logActivity("🔄 數量調整", name, `變更為 ${newQty}`); }
         };
 
         window.setSoldOut = async function(id, name) {
-            if (!db) return alert("連線異常，無法更新資料");
-            const reason = prompt(`請選擇或輸入「${name}」售完原因：\n1. 正常售出\n2. 報廢損耗\n3. 廠商退貨\n(預設為正常售出)`, "正常售出");
-            if (reason === null) return;
-
-            const itemRef = firestoreMethods.doc(db, "inventory", id);
-            await firestoreMethods.updateDoc(itemRef, { quantity: 0 });
-            showToast(`⚪️ ${name} 已標示為售完 (${reason})`);
-            await logActivity("⚪️ 商品售完", name, `手動清零 [原因: ${reason}]`);
+            const reason = prompt(`請輸入「${name}」售完原因(預設:正常售出)：`, "正常售出"); if (reason === null) return;
+            await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 });
+            showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, reason);
         };
 
         window.deleteItem = async function(id, name) {
-            if (currentRole !== 'manager') return alert("🔒 刪除品項需要店長權限！");
-            if (!db) return alert("連線異常，無法刪除資料");
-            if (confirm(`確定要從庫存中刪除「${name}」嗎？`)) {
-                await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
-                showToast(`❌ 已刪除「${name}」`);
-                await logActivity("❌ 刪除品項", name, "已將該筆庫存記錄完整移除");
-            }
+            if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
+            if (confirm(`確定刪除「${name}」嗎？`)) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); showToast(`❌ 已刪除`); await logActivity("❌ 刪除", name, "移除"); }
         };
 
         window.exportToCSV = function() {
-            if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            let csvContent = "商品名稱,類別,供應商,貨架位置,進價(成本),售價,單位預估毛利,促銷標籤,有效期限,剩餘天數,剩餘數量,預估銷售額,狀態\n";
-            currentInventory.sort((a, b) => new Date(a.expiry) - new Date(b.expiry)).forEach(item => {
-                const { diffDays, status } = calculateStatus(item.expiry, item.quantity);
-                const safeName = `"${item.name.replace(/"/g, '""')}"`;
-                const discountText = item.discount || "正價";
-                const categoryText = item.category || "常溫商品";
-                const supplierText = item.supplier || "未指定";
-                const locationText = item.location || "未指定";
-                const price = parseFloat(item.price) || 0;
-                const cost = parseFloat(item.cost) || Math.round(price * 0.7);
-                const effectivePrice = getEffectiveUnitPrice(price, item.discount);
-                const unitProfit = effectivePrice - cost;
-                const qty = parseInt(item.quantity) || 0;
-                const subtotal = effectivePrice * qty;
-                csvContent += `${safeName},${categoryText},${supplierText},${locationText},${cost},${price},${unitProfit.toFixed(1)},${discountText},${item.expiry},${diffDays},${qty},${subtotal.toFixed(1)},${status}\n`;
-            });
-            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", `門市商品庫存與財務損益報表_${today.toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
+            let csvContent = "﻿商品名稱,類別,供應商,進價,售價,有效期限,數量\n";
+            currentInventory.forEach(item => { csvContent += `"${item.name}",${item.category||""},${item.supplier||""},${item.cost||0},${item.price||0},${item.expiry},${item.quantity}\n`; });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `商品報表.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
         document.getElementById('add-item-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!db) return alert("連線異常，無法新增資料");
-            const name = document.getElementById('item-name').value;
-            const barcode = document.getElementById('item-barcode').value;
-            const category = document.getElementById('item-category').value;
-            const supplier = document.getElementById('item-supplier').value;
-            const location = document.getElementById('item-location').value;
-            const cost = parseFloat(document.getElementById('item-cost').value) || 0;
-            const price = parseFloat(document.getElementById('item-price').value) || 0;
-            const discount = document.getElementById('item-discount').value;
-            const quantity = parseInt(document.getElementById('item-quantity').value, 10);
-            const expiry = document.getElementById('item-date').value;
-            
+            const q = parseInt(document.getElementById('item-quantity').value); const n = document.getElementById('item-name').value;
             await firestoreMethods.addDoc(inventoryCol, {
-                name: name,
-                barcode: barcode || "",
-                category: category || "常溫商品",
-                supplier: supplier || "未指定",
-                location: location || "未指定",
-                cost: cost,
-                price: price,
-                discount: discount || "",
-                quantity: isNaN(quantity) ? 1 : quantity,
-                expiry: expiry
+                name: n, barcode: document.getElementById('item-barcode').value || "", category: document.getElementById('item-category').value || "常溫", supplier: document.getElementById('item-supplier').value || "", location: document.getElementById('item-location').value || "",
+                cost: parseFloat(document.getElementById('item-cost').value) || 0, price: parseFloat(document.getElementById('item-price').value) || 0, discount: document.getElementById('item-discount').value || "", quantity: isNaN(q) ? 1 : q, expiry: document.getElementById('item-date').value
             });
-
-            showToast(`➕ 成功新增「${name}」至庫存！`);
-            const discountMsg = discount ? ` [標籤: ${discount}]` : '';
-            await logActivity("➕ 新增商品", name, `類別: ${category}, 廠商: ${supplier || '未指定'}, 進價: $${cost}, 售價: $${price}, 數量: ${isNaN(quantity) ? 1 : quantity}, 期限: ${expiry}${discountMsg}`);
-
-            if (barcode && !productDatabase[barcode]) {
-                await firestoreMethods.addDoc(productsCol, { barcode: barcode, name: name });
-            }
-            
-            this.reset();
-            document.getElementById('item-barcode').value = '';
-            toggleAddForm();
+            showToast(`➕ 新增「${n}」`); await logActivity("➕ 新增", n, `數量: ${q}`);
+            const b = document.getElementById('item-barcode').value; if (b && !productDatabase[b]) await firestoreMethods.addDoc(productsCol, { barcode: b, name: n });
+            this.reset(); document.getElementById('item-barcode').value = ''; toggleAddForm();
         });
     </script>
 </body>
