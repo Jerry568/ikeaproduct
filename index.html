@@ -1190,6 +1190,59 @@
             const b = document.getElementById('item-barcode').value; if (b && !productDatabase[b]) await firestoreMethods.addDoc(productsCol, { barcode: b, name: n });
             this.reset(); document.getElementById('item-barcode').value = ''; toggleAddForm();
         });
+        // ✏️ 開啟與關閉編輯彈窗
+        window.openEditModal = function(id, name, batch, location, qty, expiry, price, discount) {
+            document.getElementById('edit-item-id').value = id;
+            document.getElementById('edit-name').value = name;
+            document.getElementById('edit-batch').value = batch;
+            document.getElementById('edit-location').value = location;
+            document.getElementById('edit-quantity').value = qty;
+            document.getElementById('edit-expiry').value = expiry;
+            document.getElementById('edit-price').value = price;
+            document.getElementById('edit-discount').value = discount;
+            
+            const modal = document.getElementById('edit-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
+        window.closeEditModal = function() {
+            const modal = document.getElementById('edit-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        };
+
+        // 💾 送出編輯表單並更新 Firestore
+        document.getElementById('edit-item-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const id = document.getElementById('edit-item-id').value;
+            const name = document.getElementById('edit-name').value;
+            const batchNo = document.getElementById('edit-batch').value;
+            const location = document.getElementById('edit-location').value;
+            const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
+            const expiry = document.getElementById('edit-expiry').value;
+            const price = parseFloat(document.getElementById('edit-price').value) || 0;
+            const discount = document.getElementById('edit-discount').value;
+
+            try {
+                const itemRef = firestoreMethods.doc(db, "inventory", id);
+                await firestoreMethods.updateDoc(itemRef, {
+                    name,
+                    batchNo,
+                    location,
+                    quantity,
+                    expiry,
+                    price,
+                    discount
+                });
+                showToast(`✅ 已成功更新「${name}」的資料！`);
+                await logActivity("✏️ 編輯修改", name, `批號: ${batchNo} | 數量: ${quantity} | 效期: ${expiry}`);
+                closeEditModal();
+            } catch (err) {
+                console.error("更新失敗", err);
+                alert("❌ 更新失敗：" + err.message);
+            }
+        });
     </script>
 </body>
 </html>
