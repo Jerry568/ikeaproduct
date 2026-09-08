@@ -441,6 +441,61 @@
             </div>
         </div>
     </div>
+    <!-- ✏️ 編輯商品批號彈窗 -->
+    <div id="edit-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 no-print p-4">
+        <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-2xl max-w-md w-full border dark:border-gray-700">
+            <h3 class="font-bold text-base text-gray-800 dark:text-white mb-3 flex items-center gap-1.5">
+                ✏️ 編輯庫存項目
+            </h3>
+            <form id="edit-item-form" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-item-id">
+                <div>
+                    <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">商品名稱</label>
+                    <input type="text" id="edit-name" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">批號 (Batch No.)</label>
+                        <input type="text" id="edit-batch" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">貨架位置</label>
+                        <input type="text" id="edit-location" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">數量</label>
+                        <input type="number" id="edit-quantity" min="0" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">有效期限</label>
+                        <input type="date" id="edit-expiry" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">售價 ($)</label>
+                        <input type="number" id="edit-price" min="0" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">促銷狀態</label>
+                        <select id="edit-discount" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                            <option value="">正價</option>
+                            <option value="8折">🏷️ 8折</option>
+                            <option value="7折">🏷️ 7折</option>
+                            <option value="5折">🔥 5折</option>
+                            <option value="即期出清">⚡ 出清</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded font-medium hover:bg-blue-700 transition">儲存修改</button>
+                    <button type="button" onclick="closeEditModal()" class="bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-3 py-1.5 rounded font-medium hover:bg-gray-400 transition">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- 🔔 操作提示 Toast 氣泡 -->
     <div id="toast-banner" class="fixed bottom-6 right-6 hidden bg-gray-800 text-white px-4 py-2.5 rounded-lg shadow-xl z-50 text-xs font-medium flex items-center gap-2 transition">
@@ -1016,7 +1071,8 @@
                             <button onclick="updateQuantity('${item.id}', '${item.name}', ${item.quantity}, 1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">+</button></div></td>
                         <td class="px-4 py-2 font-bold text-indigo-700">$${Math.round(q*ep).toLocaleString('zh-TW')}</td>
                         <td class="px-4 py-2">${(q===0)?'⚪️':diffDays<0?'⚫️':diffDays<14?'🔴':diffDays<30?'🟡':'🟢'} ${status}</td>
-                        <td class="px-4 py-2 text-center no-print flex gap-1">
+                        <td class="px-4 py-2 text-center no-print flex gap-1 items-center justify-center">
+                            <button onclick="openEditModal('${item.id}', '${item.name.replace(/'/g,"\\'").replace(/"/g,"")}', '${item.batchNo||''}', '${item.location||''}', ${item.quantity}, '${item.expiry}', ${p}, '${item.discount||''}')" class="text-blue-600 bg-blue-50 px-1.5 py-0.5 text-[10px] border border-blue-200 rounded">編輯</button>
                             <button onclick="openBarcodeModal('${item.name.replace(/'/g,"\\'").replace(/"/g,"")}', '${item.barcode||''}', ${p}, '${item.expiry}', '${item.batchNo||''}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
                             ${q>0?`<button onclick="setSoldOut('${item.id}', '${item.name}')" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
                             ${currentRole==='manager'?`<button onclick="deleteItem('${item.id}', '${item.name}')" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
