@@ -27,6 +27,11 @@
             .no-print { display: none !important; }
             body { background: white !important; color: black !important; padding: 0; }
             .shadow-md, .shadow-sm, .shadow-xl { box-shadow: none !important; }
+            body.printing-label * { visibility: hidden !important; }
+            body.printing-label #barcode-modal { display: block !important; position: static !important; background: white !important; }
+            body.printing-label #barcode-print-area,
+            body.printing-label #barcode-print-area * { visibility: visible !important; }
+            body.printing-label #barcode-print-area { position: absolute; left: 0; top: 0; width: 100%; }
         }
     </style>
 </head>
@@ -89,6 +94,9 @@
                 <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="restoreFromJSON(event)">
                 <button onclick="document.getElementById('json-file-input').click()" class="manager-only hidden bg-amber-600 text-white px-2.5 py-1.5 rounded hover:bg-amber-700 transition font-medium shadow-sm">
                     🔄 還原 JSON
+                </button>
+                <button type="button" onclick="mergeDuplicateProducts()" class="manager-only hidden bg-rose-700 text-white px-2.5 py-1.5 rounded hover:bg-rose-800 transition font-medium shadow-sm">
+                    合併重複商品
                 </button>
             </div>
         </div>
@@ -441,22 +449,26 @@
     </div>
 
     <!-- 🏷️ 條碼標籤產生器彈窗 -->
-    <div id="barcode-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 no-print p-4">
+    <div id="barcode-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 p-4">
         <div class="bg-white p-5 rounded-lg shadow-2xl max-w-sm w-full text-center border">
-            <h3 id="modal-item-name" class="font-bold text-base text-gray-800 mb-1">商品名稱</h3>
-            <p id="modal-item-info" class="text-xs text-gray-500 mb-3">單價: $100 | 有效期限: 2026-10-01</p>
-            <div class="bg-white p-2 border rounded mb-3 flex justify-center">
-                <svg id="barcode-svg"></svg>
+            <div id="barcode-print-area">
+                <h3 id="modal-item-name" class="font-bold text-base text-gray-800 mb-1">商品名稱</h3>
+                <p id="modal-item-info" class="text-xs text-gray-500 mb-3">單價: $100 | 有效期限: 2026-10-01</p>
+                <div class="bg-white p-2 border rounded mb-3 flex flex-col items-center justify-center min-h-[70px]">
+                    <svg id="barcode-svg"></svg>
+                    <p id="modal-no-barcode" class="hidden text-sm font-bold text-gray-800">無條碼</p>
+                    <p id="modal-batch-text" class="text-xs text-gray-600 mt-1"></p>
+                </div>
             </div>
-            <div class="flex justify-center gap-2 text-xs">
-                <button onclick="window.print()" class="bg-blue-600 text-white px-3 py-1.5 rounded font-medium hover:bg-blue-700">🖨️ 列印標籤</button>
-                <button onclick="closeBarcodeModal()" class="bg-gray-300 text-gray-800 px-3 py-1.5 rounded font-medium hover:bg-gray-400">關閉</button>
+            <div class="flex justify-center gap-2 text-xs no-print">
+                <button type="button" onclick="printBarcodeLabel()" class="bg-blue-600 text-white px-3 py-1.5 rounded font-medium hover:bg-blue-700">🖨️ 列印標籤</button>
+                <button type="button" onclick="closeBarcodeModal()" class="bg-gray-300 text-gray-800 px-3 py-1.5 rounded font-medium hover:bg-gray-400">關閉</button>
             </div>
         </div>
     </div>
     <!-- ✏️ 編輯商品批號彈窗 -->
     <div id="edit-modal" class="fixed inset-0 bg-black/60 hidden justify-center items-center z-50 no-print p-4">
-        <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-2xl max-w-md w-full border dark:border-gray-700">
+        <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-2xl max-w-md w-full border dark:border-gray-700 max-h-[90vh] overflow-y-auto">
             <h3 class="font-bold text-base text-gray-800 dark:text-white mb-3 flex items-center gap-1.5">
                 ✏️ 編輯庫存項目
             </h3>
@@ -465,6 +477,29 @@
                 <div>
                     <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">商品名稱</label>
                     <input type="text" id="edit-name" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">條碼</label>
+                        <input type="text" id="edit-barcode" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">商品類別</label>
+                        <select id="edit-category" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                            <option value="常溫商品">🌡️ 常溫商品</option>
+                            <option value="冷凍食品">❄️ 冷凍食品</option>
+                            <option value="零食餅乾">🍪 零食餅乾</option>
+                            <option value="飲料鮮乳">🥛 飲料鮮乳</option>
+                            <option value="烘焙麵包">🥐 烘焙麵包</option>
+                            <option value="熟食調理">🍱 熟食調理</option>
+                            <option value="罐頭乾貨">🥫 罐頭乾貨</option>
+                            <option value="其他">📦 其他</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">供應商</label>
+                    <input type="text" id="edit-supplier" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -488,8 +523,12 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
+                        <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">進價 ($)</label>
+                        <input type="number" id="edit-cost" min="0" step="any" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                    </div>
+                    <div>
                         <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">售價 ($)</label>
-                        <input type="number" id="edit-price" min="0" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
+                        <input type="number" id="edit-price" min="0" step="any" required class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded p-1.5">
                     </div>
                     <div>
                         <label class="block font-semibold text-gray-700 dark:text-gray-300 mb-1">促銷狀態</label>
@@ -529,15 +568,290 @@
 
     <!-- 引入 Firebase 與業務邏輯模組 -->
     <script type="module">
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        document.getElementById('today-date').textContent = today.toLocaleDateString('zh-TW');
-        document.getElementById('print-date').textContent = today.toLocaleDateString('zh-TW');
+        /* PURE_LOGIC_START */
+        const CATEGORY_CANONICAL = ['常溫商品', '冷凍食品', '零食餅乾', '飲料鮮乳', '烘焙麵包', '熟食調理', '罐頭乾貨', '其他'];
+        const CATEGORY_ALIASES = {
+            '常溫': '常溫商品', '常溫商品': '常溫商品',
+            '冷凍': '冷凍食品', '冷凍食品': '冷凍食品',
+            '零食': '零食餅乾', '零食餅乾': '零食餅乾',
+            '飲料': '飲料鮮乳', '鮮乳': '飲料鮮乳', '飲料鮮乳': '飲料鮮乳',
+            '烘焙': '烘焙麵包', '麵包': '烘焙麵包', '烘焙麵包': '烘焙麵包',
+            '熟食': '熟食調理', '熟食調理': '熟食調理',
+            '罐頭': '罐頭乾貨', '乾貨': '罐頭乾貨', '罐頭乾貨': '罐頭乾貨',
+            '其他': '其他', '其他品項': '其他'
+        };
+
+        function normalizeCategory(value) {
+            const stripped = String(value ?? '').trim().replace(/^[\u{1F300}-\u{1FAFF}\u2600-\u27BF]\uFE0F?\s*/u, '').trim();
+            if (!stripped) return '常溫商品';
+            if (CATEGORY_ALIASES[stripped]) return CATEGORY_ALIASES[stripped];
+            for (const name of CATEGORY_CANONICAL) {
+                if (stripped === name || stripped.endsWith(name)) return name;
+            }
+            return stripped;
+        }
+
+        function localDateParts(date = new Date()) {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hourCycle: 'h23'
+            }).formatToParts(date);
+            const pick = (type) => Number(parts.find(part => part.type === type).value);
+            const y = pick('year'), m = pick('month'), d = pick('day');
+            return { y, m, d, iso: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` };
+        }
+
+        function localDateString(date = new Date()) {
+            return localDateParts(date).iso;
+        }
+
+        function calendarDaysFromToday(expiryStr, todayStr = localDateString()) {
+            const exp = String(expiryStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+            const today = String(todayStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (!exp || !today) return null;
+            const from = Date.UTC(+today[1], +today[2] - 1, +today[3]);
+            const to = Date.UTC(+exp[1], +exp[2] - 1, +exp[3]);
+            return Math.round((to - from) / 86400000);
+        }
+
+        function lotIdForDate(date = new Date()) {
+            return 'LOT-' + localDateString(date).replace(/-/g, '');
+        }
+
+        function ymd(value) {
+            const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
+        }
+
+        function parseNumberField(value, fallback) {
+            if (value === null || value === undefined) return fallback;
+            let text = String(value).trim();
+            if (text === '') return fallback;
+            if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) text = text.replace(/,/g, '');
+            const number = Number(text);
+            return Number.isFinite(number) ? number : fallback;
+        }
+
+        function parseCsv(text) {
+            const src = String(text ?? '').replace(/^\uFEFF/, '');
+            const rows = [];
+            let row = [];
+            let field = '';
+            let inQuotes = false;
+            for (let i = 0; i < src.length; i++) {
+                const ch = src[i];
+                if (inQuotes) {
+                    if (ch === '"') {
+                        if (src[i + 1] === '"') { field += '"'; i++; }
+                        else inQuotes = false;
+                    } else field += ch;
+                } else if (ch === '"') inQuotes = true;
+                else if (ch === ',') { row.push(field); field = ''; }
+                else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                else if (ch !== '\r') field += ch;
+            }
+            if (field.length || row.length) { row.push(field); rows.push(row); }
+            return rows.filter(cells => cells.some(cell => String(cell).trim() !== ''));
+        }
+
+        function csvEscape(value) {
+            return '"' + String(value ?? '').replace(/"/g, '""') + '"';
+        }
+
+        const CSV_HEADERS = ['商品名稱', '條碼', '類別', '供應商', '批號', '貨架', '進價', '售價', '促銷', '有效期限', '數量'];
+
+        function inventoryToCsv(items) {
+            const lines = [CSV_HEADERS.map(csvEscape).join(',')];
+            (items || []).forEach(item => {
+                lines.push([
+                    item.name || '',
+                    item.barcode || '',
+                    normalizeCategory(item.category || ''),
+                    item.supplier || '',
+                    item.batchNo || '',
+                    item.location || '',
+                    parseNumberField(item.cost, 0),
+                    parseNumberField(item.price, 0),
+                    item.discount || '',
+                    item.expiry || '',
+                    parseNumberField(item.quantity, 0)
+                ].map(csvEscape).join(','));
+            });
+            return '\uFEFF' + lines.join('\r\n') + '\r\n';
+        }
+
+        function itemsFromCsv(text) {
+            const rows = parseCsv(text);
+            if (!rows.length) return [];
+            const header = rows[0].map(cell => String(cell).trim());
+            const known = ['商品名稱', 'name', '條碼', 'barcode', '類別', 'category', '供應商', 'supplier', '批號', 'batchNo', '貨架', '貨架位置', 'location', '進價', 'cost', '售價', 'price', '促銷', 'discount', '有效期限', 'expiry', '數量', 'quantity'];
+            const hasHeader = header.some(cell => known.includes(cell));
+            const dataRows = hasHeader ? rows.slice(1) : rows;
+            const idx = (names) => {
+                for (const name of names) {
+                    const at = header.indexOf(name);
+                    if (at >= 0) return at;
+                }
+                return -1;
+            };
+            const items = [];
+            dataRows.forEach(cols => {
+                if (!cols || !String(cols[0] || '').trim()) return;
+                let name, barcode = '', category, supplier, batchNo, location, cost, price, discount, expiry, quantity;
+                if (hasHeader && idx(['商品名稱', 'name']) >= 0) {
+                    const get = (names, fallback = '') => {
+                        const at = idx(names);
+                        return at >= 0 ? (cols[at] ?? fallback) : fallback;
+                    };
+                    name = String(get(['商品名稱', 'name'])).trim();
+                    barcode = String(get(['條碼', 'barcode'], '')).trim();
+                    category = normalizeCategory(get(['類別', 'category'], '常溫商品'));
+                    supplier = get(['供應商', 'supplier'], '');
+                    batchNo = String(get(['批號', 'batchNo'], '')).trim() || 'LOT-CSV';
+                    location = get(['貨架', '貨架位置', 'location'], '');
+                    cost = parseNumberField(get(['進價', 'cost'], ''), 35);
+                    price = parseNumberField(get(['售價', 'price'], ''), 50);
+                    discount = get(['促銷', 'discount'], '');
+                    expiry = get(['有效期限', 'expiry'], '');
+                    quantity = parseNumberField(get(['數量', 'quantity'], ''), 1);
+                } else if (cols.length <= 8) {
+                    name = String(cols[0] || '').trim();
+                    category = normalizeCategory(cols[1] || '常溫商品');
+                    supplier = cols[2] || '';
+                    batchNo = cols[3] || 'LOT-CSV';
+                    location = '';
+                    cost = parseNumberField(cols[4], 35);
+                    price = parseNumberField(cols[5], 50);
+                    discount = '';
+                    expiry = cols[6] || '';
+                    quantity = parseNumberField(cols[7], 1);
+                } else {
+                    name = String(cols[0] || '').trim();
+                    category = normalizeCategory(cols[1] || '常溫商品');
+                    supplier = cols[2] || '';
+                    batchNo = cols[3] || 'LOT-CSV';
+                    location = cols[4] || '';
+                    cost = parseNumberField(cols[5], 35);
+                    price = parseNumberField(cols[6], 50);
+                    discount = cols[7] || '';
+                    expiry = cols[8] || '';
+                    quantity = parseNumberField(cols[9], 1);
+                    barcode = String(cols[10] || '').trim();
+                }
+                if (!name) return;
+                items.push({ name, barcode, category, supplier, batchNo, location, cost, price, discount, expiry, quantity });
+            });
+            return items;
+        }
+
+        function planFifoAction(inventory, options) {
+            const barcode = String((options && options.barcode) || '').trim();
+            const expiry = ymd(options && options.expiry);
+            const mode = options && options.mode === 'in' ? 'in' : 'out';
+            const today = (options && options.today) || localDateString();
+            const sameBarcode = (item) => String((item && item.barcode) || '').trim() === barcode;
+            if (!barcode) return { action: 'none', reason: 'missing-barcode' };
+            if (mode === 'in') {
+                if (!expiry) return { action: 'need-expiry' };
+                const match = (inventory || []).find(item => sameBarcode(item) && ymd(item.expiry) === expiry);
+                if (match) return { action: 'adjust', item: match, delta: 1 };
+                return { action: 'create', barcode, expiry, delta: 1 };
+            }
+            const candidates = (inventory || []).filter(item => {
+                if ((parseInt(item.quantity, 10) || 0) <= 0) return false;
+                if (!sameBarcode(item)) return false;
+                const days = calendarDaysFromToday(item.expiry, today);
+                return days !== null && days >= 0;
+            }).sort((a, b) => ymd(a.expiry).localeCompare(ymd(b.expiry)));
+            if (candidates.length) return { action: 'adjust', item: candidates[0], delta: -1 };
+            const known = (inventory || []).some(sameBarcode);
+            return { action: 'none', reason: known ? 'no-fresh-stock' : 'unknown' };
+        }
+
+        function completenessScore(doc) {
+            let score = 0;
+            Object.entries(doc || {}).forEach(([key, value]) => {
+                if (key === 'id' || value === undefined || value === null) return;
+                const text = String(value).trim();
+                if (text) score += 10 + text.length;
+            });
+            return score;
+        }
+
+        function planProductMerges(docs) {
+            const groups = new Map();
+            (docs || []).forEach(doc => {
+                const code = String((doc && doc.barcode) || '').trim();
+                if (!code) return;
+                if (!groups.has(code)) groups.set(code, []);
+                groups.get(code).push(doc);
+            });
+            const plans = [];
+            groups.forEach((list, barcode) => {
+                if (list.length < 2) return;
+                const ranked = list.slice().sort((a, b) => completenessScore(b) - completenessScore(a) || String(a.id).localeCompare(String(b.id)));
+                const keep = { ...ranked[0] };
+                ranked.slice(1).forEach(other => {
+                    Object.entries(other).forEach(([key, value]) => {
+                        if (key === 'id' || value === undefined || value === null || String(value).trim() === '') return;
+                        const current = keep[key];
+                        if (current === undefined || current === null || String(current).trim() === '') keep[key] = value;
+                    });
+                });
+                plans.push({ barcode, keep, deleteIds: ranked.slice(1).map(doc => doc.id) });
+            });
+            return plans;
+        }
+
+        function productDocId(barcode) {
+            return 'bc_' + String(barcode).trim().replace(/[^\w-]/g, '_');
+        }
+
+        function validateBackup(data) {
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('備份格式不正確');
+            const present = {};
+            if ('inventory' in data) {
+                if (!Array.isArray(data.inventory)) throw new Error('庫存資料必須是陣列');
+                data.inventory.forEach((item, index) => {
+                    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`庫存第 ${index + 1} 筆格式不正確`);
+                });
+                present.inventory = data.inventory;
+            }
+            if ('products' in data) {
+                if (Array.isArray(data.products)) {
+                    data.products.forEach((item, index) => {
+                        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`商品第 ${index + 1} 筆格式不正確`);
+                    });
+                    present.products = data.products;
+                } else if (data.products && typeof data.products === 'object') {
+                    present.products = Object.entries(data.products).map(([barcode, name]) => (
+                        name && typeof name === 'object' ? { barcode, ...name } : { barcode, name: String(name ?? '') }
+                    ));
+                } else throw new Error('商品資料格式不正確');
+            }
+            const logsKey = Object.prototype.hasOwnProperty.call(data, 'logs') ? 'logs' : (Object.prototype.hasOwnProperty.call(data, 'audit_logs') ? 'audit_logs' : null);
+            if (logsKey) {
+                if (!Array.isArray(data[logsKey])) throw new Error('日誌資料必須是陣列');
+                data[logsKey].forEach((item, index) => {
+                    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`日誌第 ${index + 1} 筆格式不正確`);
+                });
+                present.logs = data[logsKey];
+            }
+            if (!present.inventory && !present.products && !present.logs) throw new Error('備份裡沒有庫存、商品或日誌');
+            return present;
+        }
+        /* PURE_LOGIC_END */
+
+        window.__logic = { localDateString, localDateParts, calendarDaysFromToday, lotIdForDate, normalizeCategory, parseNumberField, parseCsv, csvEscape, inventoryToCsv, itemsFromCsv, planFifoAction, planProductMerges, validateBackup, productDocId, ymd };
+        const taipeiLabel = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
+        document.getElementById('today-date').textContent = taipeiLabel;
+        document.getElementById('print-date').textContent = taipeiLabel;
 
         let currentInventory = [];
         let currentLogs = [];
         let selectedItemIds = new Set();
         let productDatabase = {};
+        let productDocs = [];
+        let productSeedPromise = null;
         let db, inventoryCol, productsCol, logsCol, firestoreMethods;
         let auth = null;
         let currentUser = null;
@@ -555,8 +869,8 @@
         let currentPage = 1;
         let pageSize = 10;
 
-        let calendarYear = today.getFullYear();
-        let calendarMonth = today.getMonth();
+        let calendarYear = localDateParts().y;
+        let calendarMonth = localDateParts().m - 1;
         let html5QrCode = null;
         let chartInstance = null;
 
@@ -629,8 +943,7 @@
                 }
 
             } catch (err) {
-                console.error("OCR 錯誤：", err);
-                alert("❌ AI 辨識失敗：" + err.message);
+                reportError(err, 'AI 辨識失敗：');
             } finally {
                 e.target.value = '';
             }
@@ -645,45 +958,59 @@
           return new Date(+m[1],+m[2]-1,+m[3],0,0,0,0);
         }
 
-        // 🔌 FIFO 智慧條碼槍掃描處理 (自動鎖定該條碼最早到期的批次扣減)
-        async function handleBarcodeGunScan(barcode) {
-            const matchedName = productDatabase[barcode] || `條碼商品 (${barcode})`;
-            
-            // 尋找該條碼所有庫存 > 0 的批次，並依效期由舊到新排序 (FIFO)
-            const matchedBatches = currentInventory
-                .filter(item => (item.barcode === barcode || item.name === matchedName) && (parseInt(item.quantity) || 0) > 0)
-                .sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+        function prefillScannedProduct(barcode, name) {
+            document.getElementById('item-barcode').value = barcode;
+            document.getElementById('item-name').value = name;
+            document.getElementById('item-batch').value = lotIdForDate();
+            if (document.getElementById('add-form-content').classList.contains('hidden')) toggleAddForm();
+        }
 
-            if (matchedBatches.length > 0) {
-                // 自動選取最早到期的批次 (FIFO)；預設出庫 −1，可切換入庫 +1
-                const oldestBatch = matchedBatches[0];
-                const modeEl = document.getElementById('scan-mode-select');
-                const mode = (modeEl && modeEl.value === 'in') ? 'in' : 'out';
-                const delta = mode === 'in' ? 1 : -1;
-                const qty = parseInt(oldestBatch.quantity) || 0;
-                if (delta < 0 && qty <= 0) {
-                    showToast(`⚠️ ${matchedName} 庫存不足，無法出庫`);
-                    return;
-                }
-                const nextQty = await window.updateQuantity(oldestBatch.id, delta, oldestBatch.name);
-                if (nextQty == null) return;
-                if (delta < 0) {
-                    speakText(`FIFO：${matchedName}，批號 ${oldestBatch.batchNo||'預設'} 出庫減一`);
-                    showToast(`🔌 [FIFO 出庫] ${matchedName} (批號: ${oldestBatch.batchNo||'N/A'} | 效期: ${oldestBatch.expiry}) 出庫 −1`);
-                } else {
-                    speakText(`FIFO：${matchedName}，批號 ${oldestBatch.batchNo||'預設'} 入庫加一`);
-                    showToast(`🔌 [FIFO 入庫] ${matchedName} (批號: ${oldestBatch.batchNo||'N/A'} | 效期: ${oldestBatch.expiry}) 入庫 +1`);
-                }
-            } else {
-                // 若無庫存或新品，帶入表單新增
-                document.getElementById('item-barcode').value = barcode;
-                document.getElementById('item-name').value = matchedName;
-                document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`;
-                if (document.getElementById('add-form-content').classList.contains('hidden')) toggleAddForm();
-                speakText(`掃描新品：${matchedName}`);
-                showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
-                document.getElementById('item-quantity').focus();
+        // 🔌 FIFO：出庫扣最早未過期批次；入庫只在條碼與效期都相同時併批，否則開新批。
+        async function handleBarcodeGunScan(barcode) {
+            const code = String(barcode || '').trim();
+            const matchedName = productDatabase[code] || `條碼商品 (${code})`;
+            const modeEl = document.getElementById('scan-mode-select');
+            const mode = (modeEl && modeEl.value === 'in') ? 'in' : 'out';
+            const expiry = (document.getElementById('item-date') && document.getElementById('item-date').value) || '';
+            const plan = planFifoAction(currentInventory, { barcode: code, expiry, mode, today: localDateString() });
+            if (plan.action === 'need-expiry') {
+                prefillScannedProduct(code, matchedName);
+                document.getElementById('item-date').focus();
+                showToast('請先填有效期限再入庫。不同效期會建立新批號，不會併入最早的批次。');
+                return;
             }
+            if (plan.action === 'adjust') {
+                const item = plan.item;
+                const nextQty = await window.updateQuantity(item.id, plan.delta, item.name || matchedName);
+                if (nextQty == null) return;
+                if (plan.delta < 0) {
+                    speakText(`FIFO：${item.name || matchedName}，批號 ${item.batchNo||'預設'} 出庫減一`);
+                    showToast(`🔌 [FIFO 出庫] ${item.name || matchedName} (批號: ${item.batchNo||'N/A'} | 效期: ${item.expiry}) 出庫 −1`);
+                } else {
+                    speakText(`FIFO：${item.name || matchedName}，相同效期入庫加一`);
+                    showToast(`🔌 [FIFO 入庫] ${item.name || matchedName} (批號: ${item.batchNo||'N/A'} | 效期: ${item.expiry}) 相同效期 +1`);
+                }
+                return;
+            }
+            if (plan.action === 'create') {
+                try {
+                    await firestoreMethods.addDoc(inventoryCol, {
+                        name: matchedName, barcode: code, batchNo: lotIdForDate(), category: '常溫商品', supplier: '', location: '',
+                        cost: 0, price: 0, discount: '', quantity: 1, expiry: plan.expiry
+                    });
+                    showToast(`🔌 [FIFO 入庫] 已依效期 ${plan.expiry} 建立新批號`);
+                    await logActivity('➕ 入庫新批', matchedName, `條碼 ${code} | 效期 ${plan.expiry}`);
+                } catch (err) { reportError(err, '入庫失敗：'); }
+                return;
+            }
+            if (mode === 'out') {
+                showToast(plan.reason === 'no-fresh-stock' ? `⚠️ ${matchedName} 沒有未過期的庫存可出庫` : `⚠️ ${matchedName} 沒有可出庫的庫存`);
+                return;
+            }
+            prefillScannedProduct(code, matchedName);
+            speakText(`掃描新品：${matchedName}`);
+            showToast(`🔌 [條碼槍] 帶入新品項：${matchedName}`);
+            document.getElementById('item-quantity').focus();
         }
 
         // 🔔 推播預警相關
@@ -727,10 +1054,8 @@
             const urgentItems = currentInventory.filter(item => {
                 const qty = parseInt(item.quantity) || 0;
                 if (qty <= 0) return false;
-                const expiryDate = new Date(item.expiry);
-                expiryDate.setHours(0, 0, 0, 0);
-                const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                return diffDays <= 3;
+                const diffDays = calendarDaysFromToday(item.expiry);
+                return diffDays !== null && diffDays <= 3;
             });
             if (urgentItems.length > 0) {
                 const sampleNames = urgentItems.slice(0, 2).map(i => i.name).join('、');
@@ -784,13 +1109,43 @@
 
         window.backupToJSON = function() {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
-            const backupData = { version: "6.0_FIFO", backupTime: new Date().toISOString(), inventory: currentInventory, products: productDatabase, logs: currentLogs };
+            const backupData = { version: "6.1_FIFO", backupTime: new Date().toISOString(), backupDate: localDateString(), inventory: currentInventory, products: productDocs, logs: currentLogs };
             const jsonStr = JSON.stringify(backupData, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存FIFO備份_${today.toISOString().split('T')[0]}.json`;
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市庫存FIFO備份_${localDateString()}.json`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             showToast("💾 FIFO 全系統備份檔匯出成功！");
         };
+
+        function stripId(item) {
+            const copy = { ...item };
+            delete copy.id;
+            return copy;
+        }
+
+        async function commitOps(ops) {
+            const chunkSize = 450;
+            for (let i = 0; i < ops.length; i += chunkSize) {
+                const batch = firestoreMethods.writeBatch(db);
+                ops.slice(i, i + chunkSize).forEach(fn => fn(batch));
+                await batch.commit();
+            }
+        }
+
+        async function deleteCollectionDocs(colRef) {
+            const snap = await firestoreMethods.getDocs(colRef);
+            await commitOps(snap.docs.map(docSnap => (batch) => batch.delete(docSnap.ref)));
+            return snap.size;
+        }
+
+        function chooseProductId(item) {
+            const existing = String(item.id || '').trim();
+            if (existing) return existing;
+            const code = String(item.barcode || '').trim();
+            if (!code) return '';
+            const found = productDocs.find(doc => String(doc.barcode || '').trim() === code && doc.id);
+            return found ? found.id : productDocId(code);
+        }
 
         window.restoreFromJSON = function(e) {
             if (currentRole !== 'manager') return alert("🔒 此功能需要店長權限！");
@@ -798,15 +1153,39 @@
             const reader = new FileReader();
             reader.onload = async function(evt) {
                 try {
-                    const backupData = JSON.parse(evt.target.result);
-                    if (!confirm("⚠️ 警告：確定要還原系統資料嗎？會先清除現有庫存")) { e.target.value = ''; return; }
-                    showToast("🔄 正在還原資料...");
-                    let count = 0;
-                    const existingSnap = await firestoreMethods.getDocs(inventoryCol);
-                    for (const d of existingSnap.docs) { await firestoreMethods.deleteDoc(d.ref); }
-                    if (Array.isArray(backupData.inventory)) { for (const item of backupData.inventory) { const newItem = { ...item }; delete newItem.id; await firestoreMethods.addDoc(inventoryCol, newItem); count++; } }
-                    showToast(`✅ 還原完成，共 ${count} 筆！`); await logActivity("🔄 還原", "FIFO備份", `還原 ${count} 筆`);
-                } catch (err) { alert("❌ 解析失敗：" + err.message); } finally { e.target.value = ''; }
+                    let backupData;
+                    try { backupData = JSON.parse(evt.target.result); }
+                    catch { throw new Error('不是有效的 JSON 檔'); }
+                    const present = validateBackup(backupData);
+                    const nInv = present.inventory ? present.inventory.length : 0;
+                    const nProd = present.products ? present.products.length : 0;
+                    const nLogs = present.logs ? present.logs.length : 0;
+                    const parts = [];
+                    if (present.inventory) parts.push(`庫存 ${nInv} 筆`);
+                    if (present.products) parts.push(`商品 ${nProd} 筆`);
+                    if (present.logs) parts.push(`日誌 ${nLogs} 筆`);
+                    if (!confirm(`還原這份備份？\n${parts.join('、')}。\n\n按「確定」開始還原。預設是合併：依 id 更新，不刪除現有資料。\n按「取消」放棄。`)) return;
+                    const overwrite = confirm('要改用「覆蓋（先清空）」嗎？\n\n按「確定」會先清空備份裡有包含的集合，再寫入。\n按「取消」維持合併，不刪除現有資料。');
+                    showToast(overwrite ? '🔄 正在覆蓋還原...' : '🔄 正在合併還原...');
+                    const targets = [];
+                    if (present.inventory) targets.push(['inventory', inventoryCol, present.inventory, item => String(item.id || '').trim()]);
+                    if (present.products) targets.push(['products', productsCol, present.products, chooseProductId]);
+                    if (present.logs) targets.push(['logs', logsCol, present.logs, item => String(item.id || '').trim()]);
+                    let written = 0;
+                    for (const [, colRef, items, idOf] of targets) {
+                        if (overwrite) await deleteCollectionDocs(colRef);
+                        const ops = items.map(item => (batch) => {
+                            const id = idOf(item);
+                            const ref = id ? firestoreMethods.doc(colRef, id) : firestoreMethods.doc(colRef);
+                            batch.set(ref, stripId(item), { merge: true });
+                        });
+                        await commitOps(ops);
+                        written += items.length;
+                    }
+                    showToast(`✅ 還原完成，共寫入 ${written} 筆`);
+                    await logActivity('🔄 還原', 'FIFO備份', `${overwrite ? '覆蓋' : '合併'} ${parts.join('、')}`);
+                } catch (err) { reportError(err, '還原失敗：'); }
+                finally { e.target.value = ''; }
             };
             reader.readAsText(file);
         };
@@ -862,13 +1241,15 @@
         window.generatePurchaseOrder = function() {
             let lowStockItems = currentInventory.filter(item => (parseInt(item.quantity) || 0) <= 2);
             if (lowStockItems.length === 0) return alert("🎉 當前所有商品庫存充裕，無須採購補貨！");
-            let csvContent = "﻿商品名稱,類別,供應商,批號,貨架位置,當前庫存,建議採購量,預估進價,總成本\n";
+            const header = ['商品名稱','條碼','類別','供應商','批號','貨架位置','當前庫存','建議採購量','預估進價','總成本'].map(csvEscape).join(',');
+            const lines = ['\uFEFF' + header];
             lowStockItems.forEach(item => {
-                const qty = parseInt(item.quantity) || 0; const cost = parseFloat(item.cost) || 0; const suggestedQty = Math.max(10 - qty, 5);
-                csvContent += `"${item.name.replace(/"/g, '""')}",${item.category||"常溫"},${item.supplier||"廠商"},${item.batchNo||"N/A"},${item.location||"未指定"},${qty},${suggestedQty},${cost},${suggestedQty*cost}\n`;
+                const qty = parseNumberField(item.quantity, 0); const cost = parseNumberField(item.cost, 0); const suggestedQty = Math.max(10 - qty, 5);
+                lines.push([item.name||'', item.barcode||'', normalizeCategory(item.category||''), item.supplier||'未指定', item.batchNo||'N/A', item.location||'未指定', qty, suggestedQty, cost, suggestedQty*cost].map(csvEscape).join(','));
             });
+            const csvContent = lines.join('\r\n') + '\r\n';
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市補貨採購建議表_${today.toISOString().split('T')[0]}.csv`;
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `門市補貨採購建議表_${localDateString()}.csv`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast(`🛒 已成功匯出採購建議單！`);
         };
 
@@ -884,20 +1265,70 @@
             } else { alert("⚠️ 您的瀏覽器不支援語音辨識功能。"); }
         };
 
-        function showToast(msg) {
-            const toast = document.getElementById('toast-banner'); document.getElementById('toast-message').textContent = msg;
-            toast.classList.remove('hidden'); setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+        function showToast(msg, kind) {
+            const toast = document.getElementById('toast-banner');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('hidden', 'bg-gray-800', 'bg-red-700');
+            toast.classList.add(kind === 'error' ? 'bg-red-700' : 'bg-gray-800');
+            clearTimeout(showToast._timer);
+            showToast._timer = setTimeout(() => { toast.classList.add('hidden'); }, kind === 'error' ? 6000 : 3000);
+        }
+
+        let permissionNotified = false;
+        function isPermissionDenied(err) {
+            return String((err && (err.code || err.message)) || err || '').includes('permission-denied');
+        }
+        function reportError(err, prefix) {
+            console.error(err);
+            if (isPermissionDenied(err)) {
+                if (permissionNotified) return;
+                permissionNotified = true;
+                showToast('沒有權限，請先用授權的 Google 帳號登入', 'error');
+                return;
+            }
+            const detail = (err && err.message) ? err.message : String(err || '未知錯誤');
+            showToast((prefix || '操作失敗：') + detail, 'error');
         }
 
         async function logActivity(type, itemName, detail) {
             if (!db) return;
-            try { await firestoreMethods.addDoc(logsCol, { type: type, itemName: itemName, detail: detail, timestamp: new Date().toISOString() }); } catch (err) { console.error("日誌失敗", err); }
+            try { await firestoreMethods.addDoc(logsCol, { type: type, itemName: itemName, detail: detail, timestamp: new Date().toISOString() }); }
+            catch (err) { reportError(err, '日誌寫入失敗：'); }
         }
 
+        window.printBarcodeLabel = function() {
+            document.body.classList.add('printing-label');
+            window.print();
+        };
+        window.addEventListener('afterprint', () => document.body.classList.remove('printing-label'));
+
         window.openBarcodeModal = function(name, barcode, price, expiry, batch) {
-            const modal = document.getElementById('barcode-modal'); document.getElementById('modal-item-name').textContent = `${name} [批號: ${batch||'N/A'}]`;
+            const modal = document.getElementById('barcode-modal');
+            document.getElementById('modal-item-name').textContent = `${name} [批號: ${batch||'N/A'}]`;
             document.getElementById('modal-item-info').textContent = `售價: $${price} | 有效期限: ${expiry}`;
-            JsBarcode("#barcode-svg", barcode && barcode.length >= 4 ? barcode : "8888" + Math.floor(1000+Math.random()*9000), { format: "CODE128", width: 2, height: 50, displayValue: true, fontSize: 12 });
+            const svg = document.getElementById('barcode-svg');
+            const note = document.getElementById('modal-no-barcode');
+            const batchEl = document.getElementById('modal-batch-text');
+            const code = String(barcode || '').trim();
+            svg.innerHTML = '';
+            svg.classList.add('hidden');
+            note.classList.add('hidden');
+            batchEl.textContent = batch ? `批號：${batch}` : '';
+            if (!code) {
+                note.textContent = '無條碼';
+                note.classList.remove('hidden');
+            } else {
+                try {
+                    svg.classList.remove('hidden');
+                    JsBarcode(svg, code, { format: 'CODE128', width: 2, height: 50, displayValue: true, fontSize: 12 });
+                } catch (err) {
+                    svg.classList.add('hidden');
+                    svg.innerHTML = '';
+                    note.textContent = '無條碼';
+                    note.classList.remove('hidden');
+                    batchEl.textContent = [batch ? `批號：${batch}` : '', `原文：${code}`].filter(Boolean).join('｜');
+                }
+            }
             modal.classList.remove('hidden'); modal.classList.add('flex');
         };
         window.closeBarcodeModal = function() { const modal = document.getElementById('barcode-modal'); modal.classList.add('hidden'); modal.classList.remove('flex'); };
@@ -919,30 +1350,36 @@
 
         window.batchSetDiscount = async function(discountTag) {
             if (!db) return;
-            for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { discount: discountTag }); }
-            showToast(`🏷️ 已套用 ${discountTag} 折扣`); await logActivity("🏷️ 批次折扣", "多項商品", `套用 ${discountTag}`); selectedItemIds.clear(); updateBatchActionBar();
+            try {
+                for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { discount: discountTag }); }
+                showToast(`🏷️ 已套用 ${discountTag} 折扣`); await logActivity("🏷️ 批次折扣", "多項商品", `套用 ${discountTag}`); selectedItemIds.clear(); updateBatchActionBar();
+            } catch (err) { reportError(err, '批次折扣失敗：'); }
         };
 
         window.batchSetSoldOut = async function() {
             if (!db) return;
-            for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 }); }
-            showToast(`⚪️ 標示為售完`); await logActivity("⚪️ 批次售完", "多項商品", `歸零`); selectedItemIds.clear(); updateBatchActionBar();
+            try {
+                for (const id of selectedItemIds) { await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 }); }
+                showToast(`⚪️ 標示為售完`); await logActivity("⚪️ 批次售完", "多項商品", `歸零`); selectedItemIds.clear(); updateBatchActionBar();
+            } catch (err) { reportError(err, '批次售完失敗：'); }
         };
 
         window.batchDelete = async function() {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！"); if (!db) return;
             if (confirm(`確定刪除 ${selectedItemIds.size} 項批次商品嗎？`)) {
-                for (const id of selectedItemIds) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); }
-                showToast(`❌ 刪除成功`); await logActivity("❌ 批次刪除", "多項商品", `刪除`); selectedItemIds.clear(); updateBatchActionBar();
+                try {
+                    for (const id of selectedItemIds) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); }
+                    showToast(`❌ 刪除成功`); await logActivity("❌ 批次刪除", "多項商品", `刪除`); selectedItemIds.clear(); updateBatchActionBar();
+                } catch (err) { reportError(err, '批次刪除失敗：'); }
             }
         };
 
         window.shareToLine = function() {
-            let alertItems = currentInventory.filter(item => { const qty = parseInt(item.quantity) || 0; return qty > 0 && Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)) < 14; });
+            let alertItems = currentInventory.filter(item => { const qty = parseInt(item.quantity) || 0; const diff = calendarDaysFromToday(item.expiry); return qty > 0 && diff !== null && diff < 14; });
             if (alertItems.length === 0) return alert("🎉 沒有商品需要通報！");
-            let msg = `📢【FIFO 即期通報】${today.toLocaleDateString('zh-TW')}\n---------------\n`;
+            let msg = `📢【FIFO 即期通報】${document.getElementById('today-date').textContent}\n---------------\n`;
             alertItems.forEach((item, index) => {
-                const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
+                const diff = calendarDaysFromToday(item.expiry);
                 msg += `${index + 1}. ${item.name} [批:${item.batchNo||'N/A'}] | ${item.quantity}件 | ${diff < 0 ? '已過期' : '剩'+diff+'天'}\n`;
             });
             window.open(`https://line.me/R/msg/text/?${encodeURIComponent(msg)}`, '_blank');
@@ -957,7 +1394,7 @@
                         for (const record of message.records) { if (record.recordType === "text") recordText = new TextDecoder(record.encoding).decode(record.data); }
                         document.getElementById('item-name').value = recordText; speakText(`感應成功`); showToast(`📡 NFC：${recordText}`);
                     });
-                } catch (error) { alert("NFC 失敗：" + error); }
+                } catch (error) { reportError(error, 'NFC 失敗：'); }
             } else { alert("⚠️ 不支援 Web NFC。"); }
         };
 
@@ -996,8 +1433,8 @@
                 const effPrice = getEffectiveUnitPrice(price, item.discount); tQty += qty;
                 if (qty === 0) sCount++; else {
                     tCost += qty*cost; tRev += qty*effPrice; tProf += qty*(effPrice-cost); if (qty <= 2) lCount++;
-                    const diffDays = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24));
-                    if (diffDays < 0) { eCount++; riskCost += qty*cost; } else if (diffDays < 14) { rCount++; riskCost += qty*cost; } else if (diffDays < 30) { yCount++; } else { gCount++; }
+                    const diffDays = calendarDaysFromToday(item.expiry);
+                    if (diffDays !== null && diffDays < 0) { eCount++; riskCost += qty*cost; } else if (diffDays !== null && diffDays < 14) { rCount++; riskCost += qty*cost; } else if (diffDays !== null && diffDays < 30) { yCount++; } else if (diffDays !== null) { gCount++; }
                 }
             });
             document.getElementById('stat-total-qty').textContent = `${tQty} 件`; document.getElementById('stat-red-count').textContent = `${rCount} 項`; document.getElementById('stat-yellow-count').textContent = `${yCount} 項`; document.getElementById('stat-green-count').textContent = `${gCount} 項`; document.getElementById('stat-low-count').textContent = `${lCount} 項`;
@@ -1012,35 +1449,18 @@
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = async function(evt) {
-                const lines = evt.target.result.split('\n'); let c = 0;
-                const headerCells = (lines[0]||'').replace(/^\uFEFF/, '').trim().split(',').map(h => h.replace(/^"|"$/g, '').trim());
-                const hasLoc = headerCells.includes('貨架') || headerCells.includes('location');
-                const hasDisc = headerCells.includes('促銷') || headerCells.includes('discount');
-                const useLegacy8 = headerCells.length >= 8 && !hasLoc && !hasDisc && (headerCells.includes('商品名稱') || headerCells.includes('name'));
-                const idx = (names) => { for (const n of names) { const i = headerCells.indexOf(n); if (i >= 0) return i; } return -1; };
-                for (let i = 1; i < lines.length; i++) {
-                    const cols = lines[i].trim().split(',').map(c => c.replace(/^"|"$/g, '').trim());
-                    if (cols.length >= 2 && cols[0]) {
-                        let name, category, supplier, batchNo, location, cost, price, discount, expiry, quantity;
-                        if (useLegacy8) {
-                            name = cols[0]; category = cols[1]||"常溫"; supplier = cols[2]||"未指定"; batchNo = cols[3]||"LOT-CSV";
-                            location = ""; cost = parseFloat(cols[4])||35; price = parseFloat(cols[5])||50; discount = "";
-                            expiry = cols[6]||""; quantity = parseInt(cols[7])||1;
-                        } else if (idx(['商品名稱','name']) >= 0) {
-                            const g = (names, def='') => { const i = idx(names); return i >= 0 ? (cols[i] ?? def) : def; };
-                            name = g(['商品名稱','name']); category = g(['類別','category'],"常溫"); supplier = g(['供應商','supplier'],"未指定");
-                            batchNo = g(['批號','batchNo'],"LOT-CSV"); location = g(['貨架','location'],"");
-                            cost = parseFloat(g(['進價','cost'],'35'))||35; price = parseFloat(g(['售價','price'],'50'))||50;
-                            discount = g(['促銷','discount'],""); expiry = g(['有效期限','expiry'],""); quantity = parseInt(g(['數量','quantity'],'1'),10)||1;
-                        } else {
-                            name = cols[0]; category = cols[1]||"常溫"; supplier = cols[2]||"未指定"; batchNo = cols[3]||"LOT-CSV"; location = cols[4]||"";
-                            cost = parseFloat(cols[5])||35; price = parseFloat(cols[6])||50; discount = cols[7]||""; expiry = cols[8]||""; quantity = parseInt(cols[9])||1;
-                        }
-                        await firestoreMethods.addDoc(inventoryCol, { name, category, supplier, batchNo, location, cost, price, discount, expiry, quantity }); c++;
-                    }
-                }
-                showToast(`✅ 匯入 ${c} 筆批次商品`); e.target.value = '';
+                try {
+                    const items = itemsFromCsv(evt.target.result);
+                    if (!items.length) throw new Error('沒有可匯入的資料列');
+                    const ops = items.map(item => (batch) => {
+                        batch.set(firestoreMethods.doc(inventoryCol), item);
+                    });
+                    await commitOps(ops);
+                    showToast(`✅ 匯入 ${items.length} 筆批次商品`);
+                } catch (err) { reportError(err, '匯入失敗：'); }
+                finally { e.target.value = ''; }
             };
+            reader.onerror = () => { reportError(reader.error || new Error('無法讀取檔案'), '匯入失敗：'); e.target.value = ''; };
             reader.readAsText(file);
         };
 
@@ -1048,7 +1468,7 @@
             const grid = document.getElementById('quick-buttons-grid'); grid.innerHTML = '';
             Object.entries(productDatabase).forEach(([b, n]) => {
                 const btn = document.createElement('button'); btn.type = "button"; btn.className = "bg-white dark:bg-gray-800 border border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white px-2 py-1 rounded text-xs font-medium transition shadow-sm"; btn.textContent = n;
-                btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`; }; grid.appendChild(btn);
+                btn.onclick = () => { document.getElementById('item-name').value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = lotIdForDate(); }; grid.appendChild(btn);
             });
         }
 
@@ -1065,7 +1485,7 @@
                     await handleBarcodeGunScan(decodedText);
                     if (!document.getElementById('continuous-scan-toggle').checked) stopScanner();
                 }, () => {});
-            } catch (err) { alert("相機啟動失敗：" + (err && err.message ? err.message : err) + "\n請允許瀏覽器相機權限後再試"); stopScanner(); }
+            } catch (err) { reportError(err, '相機啟動失敗：'); stopScanner(); }
         };
 
         window.stopScanner = function() {
@@ -1082,7 +1502,7 @@
                 suggestionsBox.classList.remove('hidden');
                 matches.forEach(([b, n]) => {
                     const div = document.createElement('div'); div.className = "px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs border-b flex justify-between"; div.innerHTML = `<span>${escapeHtml(n)}</span><span class="text-gray-400">${escapeHtml(b)}</span>`;
-                    div.onclick = () => { nameInput.value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`; suggestionsBox.classList.add('hidden'); }; suggestionsBox.appendChild(div);
+                    div.onclick = () => { nameInput.value = n; document.getElementById('item-barcode').value = b; document.getElementById('item-batch').value = lotIdForDate(); suggestionsBox.classList.add('hidden'); }; suggestionsBox.appendChild(div);
                 });
             } else suggestionsBox.classList.add('hidden');
         });
@@ -1098,11 +1518,9 @@
         };
 
         function calculateStatus(e, q) {
-            const qty = parseInt(q) || 0; if (qty === 0) return { diffDays: 0, status: '已售完', rowClass: 'bg-gray-100 text-gray-400 opacity-75', badgeClass: 'bg-gray-200 text-gray-600', statusCategory: 'SOLD_OUT' };
-            const expiryDate = parseExpiryLocal(e);
-            if (!expiryDate) return { diffDays: 0, status: '效期異常', rowClass: 'bg-orange-50 text-orange-900', badgeClass: 'bg-orange-100 text-orange-800', statusCategory: 'INVALID' };
-            const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-            const diffDays = Math.ceil((expiryDate.setHours(0,0,0,0) - todayStart) / (1000 * 60 * 60 * 24));
+            const qty = parseNumberField(q, 0); if (qty === 0) return { diffDays: 0, status: '已售完', rowClass: 'bg-gray-100 text-gray-400 opacity-75', badgeClass: 'bg-gray-200 text-gray-600', statusCategory: 'SOLD_OUT' };
+            const diffDays = calendarDaysFromToday(e);
+            if (diffDays === null) return { diffDays: 0, status: '效期異常', rowClass: 'bg-orange-50 text-orange-900', badgeClass: 'bg-orange-100 text-orange-800', statusCategory: 'INVALID' };
             if (diffDays < 0) return { diffDays, status: '已過期', rowClass: 'bg-gray-200 text-gray-500', badgeClass: 'bg-gray-100 text-gray-700', statusCategory: 'EXPIRED' };
             if (diffDays < 14) return { diffDays, status: '屆期 (<14天)', rowClass: 'bg-red-50 text-red-900', badgeClass: 'bg-red-50 text-red-700', statusCategory: 'RED' };
             if (diffDays < 30) return { diffDays, status: '警告 (<30天)', rowClass: 'bg-yellow-50 text-yellow-900', badgeClass: 'bg-yellow-50 text-yellow-800', statusCategory: 'YELLOW' };
@@ -1114,7 +1532,7 @@
             const k = document.getElementById('search-input').value.trim().toLowerCase(), s = document.getElementById('sort-select').value, c = document.getElementById('category-filter-select').value, sf = document.getElementById('supplier-filter-select').value;
             let fd = currentInventory.filter(item => {
                 if (!((item.name||'').toLowerCase().includes(k) || (item.batchNo||'').toLowerCase().includes(k) || (item.location||'').toLowerCase().includes(k) || (item.supplier||'').toLowerCase().includes(k))) return false;
-                if (c !== 'ALL' && (item.category || '常溫商品') !== c) return false; if (sf !== 'ALL' && (item.supplier || '未指定') !== sf) return false;
+                if (c !== 'ALL' && normalizeCategory(item.category || '常溫商品') !== c) return false; if (sf !== 'ALL' && (item.supplier || '未指定') !== sf) return false;
                 const stat = calculateStatus(item.expiry, item.quantity);
                 if (currentStatusFilter === 'ALL') return true; if (currentStatusFilter === 'LOW_STOCK') return (parseInt(item.quantity)>0 && parseInt(item.quantity)<=2); return stat.statusCategory === currentStatusFilter;
             });
@@ -1138,6 +1556,7 @@
                             <div>
                                 <div class="font-bold text-xs">${escapeHtml(item.name)}</div>
                                 <div class="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">🏷️ 批號: ${escapeHtml(item.batchNo || 'N/A')}</div>
+                                <div class="text-[10px] text-gray-500">${escapeHtml(normalizeCategory(item.category || '常溫商品'))}</div>
                             </div>
                             ${item.discount&&q>0 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-100 text-purple-700">🏷️ ${escapeHtml(item.discount)}</span>`:''}
                             ${q>0&&q<=2 ? `<span class="ml-1 px-1 py-0.5 text-[10px] bg-purple-600 text-white">⚠️低庫存</span>`:''}
@@ -1171,7 +1590,7 @@
             const price = parseFloat(item.price) || 0;
             if (action === 'qty-minus') return window.updateQuantity(item.id, -1, name);
             if (action === 'qty-plus') return window.updateQuantity(item.id, 1, name);
-            if (action === 'edit') return window.openEditModal(item.id, name, item.batchNo || '', item.location || '', item.quantity, item.expiry, price, item.discount || '');
+            if (action === 'edit') return window.openEditModal(item);
             if (action === 'label') return window.openBarcodeModal(name, item.barcode || '', price, item.expiry, item.batchNo || '');
             if (action === 'soldout') return window.setSoldOut(item.id, name);
             if (action === 'delete') return window.deleteItem(item.id, name);
@@ -1213,12 +1632,13 @@
             for (let i = 0; i < fd; i++) grid.innerHTML += `<div class="h-24 bg-gray-50 rounded"></div>`;
             for (let day = 1; day <= td; day++) {
                 const dk = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-                let html = `<div class="h-24 bg-white border p-1 overflow-y-auto"><div class="text-xs font-bold mb-1 flex justify-between ${day===today.getDate()&&calendarMonth===today.getMonth()?'text-blue-600 bg-blue-50':''}">${day}`;
+                const todayIso = localDateString();
+                let html = `<div class="h-24 bg-white border p-1 overflow-y-auto"><div class="text-xs font-bold mb-1 flex justify-between ${dk===todayIso?'text-blue-600 bg-blue-50':''}">${day}`;
                 if (expMap[dk]) html += `<span class="bg-gray-100 text-[9px] px-1 rounded">${expMap[dk].length}項</span></div><div class="space-y-0.5">`; else html += `</div><div class="space-y-0.5">`;
                 (expMap[dk]||[]).forEach(item => {
-                    const diff = Math.ceil((new Date(item.expiry).setHours(0,0,0,0) - today) / (1000 * 60 * 60 * 24)), q = parseInt(item.quantity)||0;
-                    const c = q===0 ? 'bg-gray-200' : diff<0 ? 'bg-gray-100' : diff<14 ? 'bg-red-100 text-red-800' : diff<30 ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800';
-                    html += `<div class="text-[9px] px-1 truncate rounded ${c}">${q===0?'⚪️':diff<0?'⚫️':diff<14?'🔴':diff<30?'🟡':'🟢'} ${escapeHtml(item.name)} (${escapeHtml(item.batchNo||'N/A')})</div>`;
+                    const diff = calendarDaysFromToday(item.expiry), q = parseNumberField(item.quantity, 0);
+                    const c = q===0 ? 'bg-gray-200' : diff===null ? 'bg-orange-100' : diff<0 ? 'bg-gray-100' : diff<14 ? 'bg-red-100 text-red-800' : diff<30 ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800';
+                    html += `<div class="text-[9px] px-1 truncate rounded ${c}">${q===0?'⚪️':diff===null?'❓':diff<0?'⚫️':diff<14?'🔴':diff<30?'🟡':'🟢'} ${escapeHtml(item.name)} (${escapeHtml(item.batchNo||'N/A')})</div>`;
                 });
                 grid.innerHTML += html + `</div></div>`;
             }
@@ -1263,13 +1683,16 @@
             if (banner) banner.classList.toggle('hidden', !(authStateKnown && !signedIn && !showOverlay));
         }
 
+        const seenFirestoreErrors = new Set();
         function handleFirestoreError(error) {
-            console.error("Firestore 錯誤", error);
-            const code = (error && error.code) || '';
-            if (code === 'permission-denied' || code === 'firestore/permission-denied' || String(code).includes('permission-denied')) {
+            if (isPermissionDenied(error)) {
                 readsDenied = true;
                 updateAuthUI();
             }
+            const key = String((error && (error.code || error.message)) || error);
+            if (seenFirestoreErrors.has(key)) return;
+            seenFirestoreErrors.add(key);
+            reportError(error, '讀取資料失敗：');
         }
 
         function authNotEnabledAlert() {
@@ -1289,14 +1712,14 @@
                 const code = err && err.code ? err.code : '';
                 if (code === 'auth/unauthorized-domain' || code === 'auth/operation-not-allowed') { authNotEnabledAlert(); return; }
                 if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
-                alert('Google 登入失敗：' + ((err && err.message) || err));
+                reportError(err, 'Google 登入失敗：');
             }
         }
 
         async function handleGoogleSignOut() {
             if (!auth || typeof signOutFn !== 'function') return;
             try { await signOutFn(auth); }
-            catch (err) { console.error(err); alert('登出失敗：' + ((err && err.message) || err)); }
+            catch (err) { reportError(err, '登出失敗：'); }
         }
 
         document.getElementById('signin-header-btn').addEventListener('click', handleGoogleSignIn);
@@ -1320,9 +1743,7 @@
                 else { showToast(`🔄 ${name} 數量調整為 ${next}`); await logActivity("🔄 數量調整", name, `變更為 ${next}`); }
                 return next;
             } catch (err) {
-                console.error(err);
-                const msg = err && err.message ? err.message : String(err);
-                alert('❌ 數量更新失敗：' + msg);
+                reportError(err, '數量更新失敗：');
                 return null;
             }
         };
@@ -1331,8 +1752,8 @@
             document.getElementById('sync-status').textContent = '連線登入中...';
             const firebaseApp = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js");
             const firestore = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
-            const { runTransaction, getDocs, deleteDoc, addDoc, updateDoc, doc } = firestore;
-            firestoreMethods = { getDocs, deleteDoc, addDoc, updateDoc, doc, runTransaction };
+            const { runTransaction, getDocs, deleteDoc, addDoc, updateDoc, doc, setDoc, writeBatch } = firestore;
+            firestoreMethods = { getDocs, deleteDoc, addDoc, updateDoc, doc, runTransaction, setDoc, writeBatch };
 
             let firebaseAuth = null;
             try {
@@ -1365,8 +1786,15 @@
                 unsubFns = [];
 
                 unsubFns.push(firestoreSdk.onSnapshot(productsCol, { includeMetadataChanges: true }, (snapshot) => {
-                    if (snapshot.empty && navigator.onLine) { Object.entries(defaultProducts).forEach(([b, n]) => firestoreSdk.addDoc(productsCol, { barcode: b, name: n })); }
-                    else { productDatabase = {}; snapshot.forEach((docSnap) => { const d = docSnap.data(); if (d.barcode) productDatabase[d.barcode] = d.name; }); renderQuickButtons(); }
+                    productDocs = [];
+                    productDatabase = {};
+                    snapshot.forEach((docSnap) => {
+                        const data = { id: docSnap.id, ...docSnap.data() };
+                        productDocs.push(data);
+                        if (data.barcode) productDatabase[String(data.barcode)] = data.name || '';
+                    });
+                    renderQuickButtons();
+                    if (!snapshot.metadata.fromCache) seedDefaultProducts();
                 }, handleFirestoreError));
 
                 unsubFns.push(firestoreSdk.onSnapshot(logsCol, { includeMetadataChanges: true }, (snapshot) => {
@@ -1401,58 +1829,124 @@
 
             subscribeCollections(firestore);
         } catch (e) {
-            console.error("Firebase 載入崩潰", e);
+            reportError(e, 'Firebase 載入失敗：');
             authInitState = 'failed';
             authStateKnown = true;
             updateAuthUI();
         }
 
+        function seedDefaultProducts() {
+            if (productSeedPromise || productDocs.length || !navigator.onLine) return;
+            productSeedPromise = (async () => {
+                const ops = Object.entries(defaultProducts).map(([barcode, name]) => (batch) => {
+                    batch.set(firestoreMethods.doc(productsCol, productDocId(barcode)), { barcode, name }, { merge: true });
+                });
+                await commitOps(ops);
+            })().catch((err) => {
+                productSeedPromise = null;
+                reportError(err, '預設商品建立失敗：');
+            });
+        }
+
+        window.mergeDuplicateProducts = async function() {
+            if (currentRole !== 'manager') return alert('🔒 此功能需要店長權限！');
+            if (!db) return showToast('資料庫尚未連線', 'error');
+            try {
+                const snap = await firestoreMethods.getDocs(productsCol);
+                const docs = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+                const plans = planProductMerges(docs);
+                const deleteCount = plans.reduce((sum, plan) => sum + plan.deleteIds.length, 0);
+                if (!deleteCount) { showToast('沒有重複條碼的商品可合併'); return; }
+                if (!confirm(`將合併 ${plans.length} 組重複條碼，刪除 ${deleteCount} 筆較不完整的商品，並保留欄位較完整的一筆。確定執行「合併重複商品」嗎？`)) return;
+                const ops = [];
+                plans.forEach(plan => {
+                    ops.push((batch) => batch.set(firestoreMethods.doc(productsCol, plan.keep.id), stripId(plan.keep), { merge: true }));
+                    plan.deleteIds.forEach(id => ops.push((batch) => batch.delete(firestoreMethods.doc(productsCol, id))));
+                });
+                await commitOps(ops);
+                showToast(`已合併 ${plans.length} 組重複商品，刪除 ${deleteCount} 筆`);
+                await logActivity('🧹 合併商品', '商品主檔', `合併 ${plans.length} 組，刪除 ${deleteCount} 筆`);
+            } catch (err) { reportError(err, '合併失敗：'); }
+        };
+
         window.setSoldOut = async function(id, name) {
             const reason = prompt(`請輸入「${name}」售完原因(預設:正常售出)：`, "正常售出"); if (reason === null) return;
-            await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 });
-            showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, reason);
+            try {
+                await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: 0 });
+                showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, reason);
+            } catch (err) { reportError(err, '售完失敗：'); }
         };
 
         window.deleteItem = async function(id, name) {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
-            if (confirm(`確定刪除「${name}」批次嗎？`)) { await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id)); showToast(`❌ 已刪除`); await logActivity("❌ 刪除", name, "移除批次"); }
+            if (confirm(`確定刪除「${name}」批次嗎？`)) {
+                try {
+                    await firestoreMethods.deleteDoc(firestoreMethods.doc(db, "inventory", id));
+                    showToast(`❌ 已刪除`); await logActivity("❌ 刪除", name, "移除批次");
+                } catch (err) { reportError(err, '刪除失敗：'); }
+            }
         };
 
         window.exportToCSV = function() {
             if (currentRole !== 'manager') return alert("🔒 需要店長權限！");
-            const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-            let csvContent = "﻿商品名稱,類別,供應商,批號,貨架,進價,售價,促銷,有效期限,數量\n";
-            currentInventory.forEach(item => {
-                csvContent += [q(item.name), q(item.category||""), q(item.supplier||""), q(item.batchNo||""), q(item.location||""), q(item.cost??0), q(item.price??0), q(item.discount||""), q(item.expiry||""), q(item.quantity??0)].join(',') + "\n";
-            });
+            const csvContent = inventoryToCsv(currentInventory);
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `FIFO商品批號報表.csv`;
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `FIFO商品批號報表_${localDateString()}.csv`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch((err) => reportError(err, '離線功能註冊失敗：'));
+        }
+
         document.getElementById('add-item-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const q = parseInt(document.getElementById('item-quantity').value); const n = document.getElementById('item-name').value;
-            const bNo = document.getElementById('item-batch').value.trim() || `LOT-${new Date().toISOString().split('T')[0].replace(/-/g,'')}`;
-            await firestoreMethods.addDoc(inventoryCol, {
-                name: n, barcode: document.getElementById('item-barcode').value || "", batchNo: bNo, category: document.getElementById('item-category').value || "常溫", supplier: document.getElementById('item-supplier').value || "", location: document.getElementById('item-location').value || "",
-                cost: parseFloat(document.getElementById('item-cost').value) || 0, price: parseFloat(document.getElementById('item-price').value) || 0, discount: document.getElementById('item-discount').value || "", quantity: isNaN(q) ? 1 : q, expiry: document.getElementById('item-date').value
-            });
-            showToast(`➕ 新增「${n}」批號: ${bNo}`); await logActivity("➕ 新增批次", n, `批號: ${bNo} | 數量: ${q}`);
-            const b = document.getElementById('item-barcode').value; if (b && !productDatabase[b]) await firestoreMethods.addDoc(productsCol, { barcode: b, name: n });
-            this.reset(); document.getElementById('item-barcode').value = ''; toggleAddForm();
+            const quantity = parseNumberField(document.getElementById('item-quantity').value, NaN);
+            const cost = parseNumberField(document.getElementById('item-cost').value, NaN);
+            const price = parseNumberField(document.getElementById('item-price').value, NaN);
+            if (!Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(cost) || cost < 0 || !Number.isFinite(price) || price < 0) {
+                showToast('數量、進價、售價必須是 0 或正數', 'error');
+                return;
+            }
+            const n = document.getElementById('item-name').value;
+            const bNo = document.getElementById('item-batch').value.trim() || lotIdForDate();
+            const barcode = document.getElementById('item-barcode').value || '';
+            try {
+                await firestoreMethods.addDoc(inventoryCol, {
+                    name: n, barcode, batchNo: bNo, category: normalizeCategory(document.getElementById('item-category').value || '常溫商品'), supplier: document.getElementById('item-supplier').value || "", location: document.getElementById('item-location').value || "",
+                    cost, price, discount: document.getElementById('item-discount').value || "", quantity, expiry: document.getElementById('item-date').value
+                });
+                showToast(`➕ 新增「${n}」批號: ${bNo}`); await logActivity("➕ 新增批次", n, `批號: ${bNo} | 數量: ${quantity}`);
+                if (barcode && !productDatabase[barcode]) {
+                    await firestoreMethods.setDoc(firestoreMethods.doc(productsCol, productDocId(barcode)), { barcode, name: n }, { merge: true });
+                }
+                this.reset(); document.getElementById('item-barcode').value = ''; toggleAddForm();
+            } catch (err) { reportError(err, '新增失敗：'); }
         });
+        function requireNonNegative(raw, label) {
+            const text = String(raw ?? '').trim();
+            if (text === '') return { ok: false, message: `請填寫${label}` };
+            const value = Number(text);
+            if (!Number.isFinite(value) || value < 0) return { ok: false, message: `${label}必須是 0 或正數` };
+            return { ok: true, value };
+        }
         // ✏️ 開啟與關閉編輯彈窗
-        window.openEditModal = function(id, name, batch, location, qty, expiry, price, discount) {
-            document.getElementById('edit-item-id').value = id;
-            document.getElementById('edit-name').value = name;
-            document.getElementById('edit-batch').value = batch;
-            document.getElementById('edit-location').value = location;
-            document.getElementById('edit-quantity').value = qty;
-            document.getElementById('edit-expiry').value = expiry;
-            document.getElementById('edit-price').value = price;
-            document.getElementById('edit-discount').value = discount;
-            
+        window.openEditModal = function(item) {
+            document.getElementById('edit-item-id').value = item.id || '';
+            document.getElementById('edit-name').value = item.name || '';
+            document.getElementById('edit-barcode').value = item.barcode || '';
+            const category = normalizeCategory(item.category || '常溫商品');
+            const categorySelect = document.getElementById('edit-category');
+            if (![...categorySelect.options].some(option => option.value === category)) categorySelect.add(new Option(category, category));
+            categorySelect.value = category;
+            document.getElementById('edit-supplier').value = item.supplier || '';
+            document.getElementById('edit-batch').value = item.batchNo || '';
+            document.getElementById('edit-location').value = item.location || '';
+            document.getElementById('edit-quantity').value = parseNumberField(item.quantity, 0);
+            document.getElementById('edit-expiry').value = ymd(item.expiry);
+            document.getElementById('edit-cost').value = Number.isFinite(Number(item.cost)) ? item.cost : 0;
+            document.getElementById('edit-price').value = Number.isFinite(Number(item.price)) ? item.price : 0;
+            document.getElementById('edit-discount').value = item.discount || '';
             const modal = document.getElementById('edit-modal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -1468,32 +1962,32 @@
         document.getElementById('edit-item-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const id = document.getElementById('edit-item-id').value;
-            const name = document.getElementById('edit-name').value;
+            const name = document.getElementById('edit-name').value.trim();
+            const barcode = document.getElementById('edit-barcode').value.trim();
+            const category = normalizeCategory(document.getElementById('edit-category').value);
+            const supplier = document.getElementById('edit-supplier').value.trim();
             const batchNo = document.getElementById('edit-batch').value;
             const location = document.getElementById('edit-location').value;
-            const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
+            const quantityCheck = requireNonNegative(document.getElementById('edit-quantity').value, '數量');
+            const costCheck = requireNonNegative(document.getElementById('edit-cost').value, '進價');
+            const priceCheck = requireNonNegative(document.getElementById('edit-price').value, '售價');
             const expiry = document.getElementById('edit-expiry').value;
-            const price = parseFloat(document.getElementById('edit-price').value) || 0;
             const discount = document.getElementById('edit-discount').value;
+            if (!name) { showToast('請填寫商品名稱', 'error'); return; }
+            if (!expiry) { showToast('請填寫有效期限', 'error'); return; }
+            const invalid = [quantityCheck, costCheck, priceCheck].find(result => !result.ok);
+            if (invalid) { showToast(invalid.message, 'error'); return; }
 
             try {
                 const itemRef = firestoreMethods.doc(db, "inventory", id);
                 await firestoreMethods.updateDoc(itemRef, {
-                    name,
-                    batchNo,
-                    location,
-                    quantity,
-                    expiry,
-                    price,
-                    discount
+                    name, barcode, category, supplier, batchNo, location,
+                    quantity: quantityCheck.value, expiry, cost: costCheck.value, price: priceCheck.value, discount
                 });
                 showToast(`✅ 已成功更新「${name}」的資料！`);
-                await logActivity("✏️ 編輯修改", name, `批號: ${batchNo} | 數量: ${quantity} | 效期: ${expiry}`);
+                await logActivity("✏️ 編輯修改", name, `批號: ${batchNo} | 數量: ${quantityCheck.value} | 效期: ${expiry}`);
                 closeEditModal();
-            } catch (err) {
-                console.error("更新失敗", err);
-                alert("❌ 更新失敗：" + err.message);
-            }
+            } catch (err) { reportError(err, '更新失敗：'); }
         });
     </script>
 </body>
