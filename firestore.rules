@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 授權可以使用本系統的 Google 帳號。新增店員：在清單加一筆信箱，並同步修改 index.html 的 ALLOWED_EMAILS。
+    // 一定要先啟用 Authentication 的 Google 登入、把 jerry568.github.io 加入授權網域、網站能成功登入後，才發布這些規則。
+    function isAllowedUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          'jerryjerrjer0123210@gmail.com'
+        ];
+    }
+    match /{document=**} {
+      allow read, write: if isAllowedUser();
+    }
+  }
+}

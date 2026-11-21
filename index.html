@@ -59,6 +59,9 @@
                     <button onclick="toggleDarkMode()" class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 px-2.5 py-1 rounded-full text-xs font-bold transition">
                         🌙 <span id="dark-mode-text">深色</span>
                     </button>
+                    <span id="auth-user-label" class="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[200px] truncate"></span>
+                    <button type="button" id="signout-btn" class="hidden bg-rose-600 text-white px-2.5 py-1 rounded-full text-xs font-bold transition hover:bg-rose-700">登出</button>
+                    <button type="button" id="signin-header-btn" class="bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-2.5 py-1 rounded-full text-xs font-bold transition border border-amber-400 hover:bg-amber-50">Google 登入</button>
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end text-xs">
@@ -88,6 +91,10 @@
                     🔄 還原 JSON
                 </button>
             </div>
+        </div>
+
+        <div id="auth-suggest-banner" class="hidden mb-3 rounded border border-yellow-300 bg-yellow-100 px-3 py-1.5 text-xs font-medium text-yellow-900 no-print">
+            💡 建議使用 Google 登入，以便日後只允許授權帳號存取。目前未登入仍可正常使用。
         </div>
 
         <!-- 列印專用抬頭 (僅列印時顯示) -->
@@ -503,6 +510,18 @@
         </div>
     </div>
 
+    <!-- 🔐 Google 登入覆蓋層：權限被拒，或已登入但不在授權名單時顯示 -->
+    <div id="auth-overlay" class="fixed inset-0 bg-black/70 hidden justify-center items-center z-[70] no-print p-4" role="dialog" aria-modal="true" aria-labelledby="auth-overlay-title">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-2xl max-w-md w-full text-center border dark:border-gray-700">
+            <h2 id="auth-overlay-title" class="font-bold text-lg text-gray-800 dark:text-white mb-2">需要授權的 Google 帳號</h2>
+            <p id="auth-overlay-message" class="text-sm text-gray-600 dark:text-gray-300 mb-4">請使用已授權的 Google 帳號登入，才能讀寫庫存資料。</p>
+            <div class="flex justify-center gap-2">
+                <button type="button" id="auth-overlay-signin" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-blue-700 transition">Google 登入</button>
+                <button type="button" id="auth-overlay-signout" class="hidden bg-gray-200 text-gray-800 px-4 py-2 rounded font-bold text-sm hover:bg-gray-300 transition">登出</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 🔔 操作提示 Toast 氣泡 -->
     <div id="toast-banner" class="fixed bottom-6 right-6 hidden bg-gray-800 text-white px-4 py-2.5 rounded-lg shadow-xl z-50 text-xs font-medium flex items-center gap-2 transition">
         <span id="toast-message">操作成功</span>
@@ -520,6 +539,16 @@
         let selectedItemIds = new Set();
         let productDatabase = {};
         let db, inventoryCol, productsCol, logsCol, firestoreMethods;
+        let auth = null;
+        let currentUser = null;
+        let readsDenied = false;
+        let authInitState = 'pending';
+        let unsubFns = [];
+        let GoogleAuthProvider = null;
+        let signInWithPopupFn = null;
+        let signOutFn = null;
+        // 授權可以使用本系統的 Google 帳號。新增店員時請與 firestore.rules 的清單同步。
+        const ALLOWED_EMAILS = ['jerryjerrjer0123210@gmail.com'];
         let currentView = 'list'; 
         let currentStatusFilter = 'ALL'; 
         
@@ -636,7 +665,8 @@
                     showToast(`⚠️ ${matchedName} 庫存不足，無法出庫`);
                     return;
                 }
-                await window.updateQuantity(oldestBatch.id, oldestBatch.name, oldestBatch.quantity, delta);
+                const nextQty = await window.updateQuantity(oldestBatch.id, delta, oldestBatch.name);
+                if (nextQty == null) return;
                 if (delta < 0) {
                     speakText(`FIFO：${matchedName}，批號 ${oldestBatch.batchNo||'預設'} 出庫減一`);
                     showToast(`🔌 [FIFO 出庫] ${matchedName} (批號: ${oldestBatch.batchNo||'N/A'} | 效期: ${oldestBatch.expiry}) 出庫 −1`);
@@ -1102,8 +1132,8 @@
                 const { diffDays, status, rowClass } = calculateStatus(item.expiry, item.quantity); const q=parseInt(item.quantity)||0, p=parseFloat(item.price)||0, c=Number.isFinite(parseFloat(item.cost))?parseFloat(item.cost):Math.round(p*.7), ep=getEffectiveUnitPrice(p, item.discount);
                 const isChecked = selectedItemIds.has(item.id);
                 tbody.innerHTML += `
-                    <tr class="hover:bg-opacity-80 transition ${rowClass}">
-                        <td class="px-3 py-2 text-center no-print"><input type="checkbox" value="${escapeAttr(item.id)}" ${isChecked?'checked':''} onclick="toggleItemSelection('${escapeAttr(item.id)}')" class="item-checkbox"></td>
+                    <tr class="hover:bg-opacity-80 transition ${rowClass}" data-id="${escapeAttr(item.id)}">
+                        <td class="px-3 py-2 text-center no-print"><input type="checkbox" value="${escapeAttr(item.id)}" ${isChecked?'checked':''} data-id="${escapeAttr(item.id)}" data-action="select" class="item-checkbox"></td>
                         <td class="px-4 py-2 font-medium">
                             <div>
                                 <div class="font-bold text-xs">${escapeHtml(item.name)}</div>
@@ -1119,20 +1149,52 @@
                         <td class="px-4 py-2 text-[11px] font-bold">${escapeHtml(item.expiry)}</td>
                         <td class="px-4 py-2 font-bold">${q===0?'-':(diffDays<0?'已過期 '+Math.abs(diffDays):diffDays+' 天')}</td>
                         <td class="px-4 py-2 text-center"><div class="flex items-center justify-center gap-2">
-                            <button onclick="updateQuantity('${escapeAttr(item.id)}', '${escapeAttr(item.name)}', ${item.quantity}, -1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">-</button>
+                            <button type="button" data-id="${escapeAttr(item.id)}" data-action="qty-minus" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">-</button>
                             <span class="w-6 font-bold">${item.quantity}</span>
-                            <button onclick="updateQuantity('${escapeAttr(item.id)}', '${escapeAttr(item.name)}', ${item.quantity}, 1)" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">+</button></div></td>
+                            <button type="button" data-id="${escapeAttr(item.id)}" data-action="qty-plus" class="w-6 h-6 border rounded hover:bg-gray-100 no-print">+</button></div></td>
                         <td class="px-4 py-2 font-bold text-indigo-700">$${Math.round(q*ep).toLocaleString('zh-TW')}</td>
                         <td class="px-4 py-2">${(q===0)?'⚪️':diffDays<0?'⚫️':diffDays<14?'🔴':diffDays<30?'🟡':'🟢'} ${escapeHtml(status)}</td>
                         <td class="px-4 py-2 text-center no-print flex gap-1 items-center justify-center">
-                            <button onclick="openEditModal('${escapeAttr(item.id)}', '${escapeAttr(item.name)}', '${escapeAttr(item.batchNo||'')}', '${escapeAttr(item.location||'')}', ${item.quantity}, '${escapeAttr(item.expiry)}', ${p}, '${escapeAttr(item.discount||'')}')" class="text-blue-600 bg-blue-50 px-1.5 py-0.5 text-[10px] border border-blue-200 rounded">編輯</button>
-                            <button onclick="openBarcodeModal('${escapeAttr(item.name)}', '${escapeAttr(item.barcode||'')}', ${p}, '${escapeAttr(item.expiry)}', '${escapeAttr(item.batchNo||'')}')" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
-                            ${q>0?`<button onclick="setSoldOut('${escapeAttr(item.id)}', '${escapeAttr(item.name)}')" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
-                            ${currentRole==='manager'?`<button onclick="deleteItem('${escapeAttr(item.id)}', '${escapeAttr(item.name)}')" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
+                            <button type="button" data-id="${escapeAttr(item.id)}" data-action="edit" class="text-blue-600 bg-blue-50 px-1.5 py-0.5 text-[10px] border border-blue-200 rounded">編輯</button>
+                            <button type="button" data-id="${escapeAttr(item.id)}" data-action="label" class="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 text-[10px] border border-indigo-200 rounded">🏷️標籤</button>
+                            ${q>0?`<button type="button" data-id="${escapeAttr(item.id)}" data-action="soldout" class="text-gray-600 bg-gray-100 px-1.5 py-0.5 text-[10px] border rounded">售完</button>`:''}
+                            ${currentRole==='manager'?`<button type="button" data-id="${escapeAttr(item.id)}" data-action="delete" class="text-red-500 bg-white px-1.5 py-0.5 text-[10px] border border-red-200 rounded">刪除</button>`:''}
                         </td>
                     </tr>`;
             });
         };
+
+        function dispatchInventoryAction(action, id) {
+            const item = currentInventory.find(it => it.id === id);
+            if (!item) return;
+            const name = item.name;
+            const price = parseFloat(item.price) || 0;
+            if (action === 'qty-minus') return window.updateQuantity(item.id, -1, name);
+            if (action === 'qty-plus') return window.updateQuantity(item.id, 1, name);
+            if (action === 'edit') return window.openEditModal(item.id, name, item.batchNo || '', item.location || '', item.quantity, item.expiry, price, item.discount || '');
+            if (action === 'label') return window.openBarcodeModal(name, item.barcode || '', price, item.expiry, item.batchNo || '');
+            if (action === 'soldout') return window.setSoldOut(item.id, name);
+            if (action === 'delete') return window.deleteItem(item.id, name);
+        }
+
+        function onInventoryDelegate(event) {
+            const container = event.currentTarget;
+            const el = event.target.closest('[data-action][data-id]');
+            if (!el || !container.contains(el)) return;
+            const action = el.getAttribute('data-action');
+            const id = el.getAttribute('data-id');
+            if (!action || !id) return;
+            if (event.type === 'change') {
+                if (action === 'select') window.toggleItemSelection(id);
+                return;
+            }
+            if (action === 'select') return;
+            dispatchInventoryAction(action, id);
+        }
+
+        const inventoryContainer = document.getElementById('view-list-container');
+        inventoryContainer.addEventListener('click', onInventoryDelegate);
+        inventoryContainer.addEventListener('change', onInventoryDelegate);
 
         function renderLogs() {
             const tbody = document.getElementById('logs-list'); tbody.innerHTML = ''; document.getElementById('log-count-text').textContent = `共 ${currentLogs.length} 筆`;
@@ -1166,50 +1228,184 @@
         document.getElementById('search-input').addEventListener('input', () => { if(currentView === 'list') resetAndRender(); });
         updateNotificationButtonUI(); updateNetworkStatus();
 
+        let authStateKnown = false;
+
+        function showAuthOverlay(show) {
+            const overlay = document.getElementById('auth-overlay');
+            if (!overlay) return;
+            if (show) { overlay.classList.remove('hidden'); overlay.classList.add('flex'); }
+            else { overlay.classList.add('hidden'); overlay.classList.remove('flex'); }
+        }
+
+        function updateAuthUI() {
+            const label = document.getElementById('auth-user-label');
+            const signoutBtn = document.getElementById('signout-btn');
+            const signinBtn = document.getElementById('signin-header-btn');
+            const banner = document.getElementById('auth-suggest-banner');
+            const overlayMsg = document.getElementById('auth-overlay-message');
+            const overlaySignout = document.getElementById('auth-overlay-signout');
+            const email = currentUser && currentUser.email ? currentUser.email : '';
+            const signedIn = !!currentUser;
+            const allowed = signedIn && ALLOWED_EMAILS.includes(email);
+            const unauthorized = signedIn && !allowed;
+            const showOverlay = readsDenied || unauthorized;
+
+            if (label) label.textContent = signedIn ? email : '';
+            if (signoutBtn) signoutBtn.classList.toggle('hidden', !signedIn);
+            if (signinBtn) signinBtn.classList.toggle('hidden', signedIn);
+            if (overlayMsg) {
+                if (unauthorized) overlayMsg.textContent = `目前登入的 Google 帳號（${email}）不在授權名單內，無法使用本系統。請登出後改用已授權的帳號登入。`;
+                else if (readsDenied) overlayMsg.textContent = '讀取資料庫被拒絕（權限不足）。請使用已授權的 Google 帳號登入後再繼續。';
+                else overlayMsg.textContent = '請使用已授權的 Google 帳號登入，才能讀寫庫存資料。';
+            }
+            if (overlaySignout) overlaySignout.classList.toggle('hidden', !signedIn);
+            showAuthOverlay(showOverlay);
+            if (banner) banner.classList.toggle('hidden', !(authStateKnown && !signedIn && !showOverlay));
+        }
+
+        function handleFirestoreError(error) {
+            console.error("Firestore 錯誤", error);
+            const code = (error && error.code) || '';
+            if (code === 'permission-denied' || code === 'firestore/permission-denied' || String(code).includes('permission-denied')) {
+                readsDenied = true;
+                updateAuthUI();
+            }
+        }
+
+        function authNotEnabledAlert() {
+            alert('Google 登入尚未在 Firebase 主控台啟用。請到 Firebase Console 開啟 Authentication 的 Google 登入，並把此網站網域（例如 jerry568.github.io）加入授權網域後再試。');
+        }
+
+        async function handleGoogleSignIn() {
+            if (authInitState === 'pending') { showToast('登入功能載入中，請稍候再試'); return; }
+            if (authInitState !== 'ready' || !auth || typeof GoogleAuthProvider !== 'function' || typeof signInWithPopupFn !== 'function') {
+                authNotEnabledAlert();
+                return;
+            }
+            try {
+                await signInWithPopupFn(auth, new GoogleAuthProvider());
+            } catch (err) {
+                console.error(err);
+                const code = err && err.code ? err.code : '';
+                if (code === 'auth/unauthorized-domain' || code === 'auth/operation-not-allowed') { authNotEnabledAlert(); return; }
+                if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+                alert('Google 登入失敗：' + ((err && err.message) || err));
+            }
+        }
+
+        async function handleGoogleSignOut() {
+            if (!auth || typeof signOutFn !== 'function') return;
+            try { await signOutFn(auth); }
+            catch (err) { console.error(err); alert('登出失敗：' + ((err && err.message) || err)); }
+        }
+
+        document.getElementById('signin-header-btn').addEventListener('click', handleGoogleSignIn);
+        document.getElementById('auth-overlay-signin').addEventListener('click', handleGoogleSignIn);
+        document.getElementById('signout-btn').addEventListener('click', handleGoogleSignOut);
+        document.getElementById('auth-overlay-signout').addEventListener('click', handleGoogleSignOut);
+
+        window.updateQuantity = async function(id, delta, name) {
+            try {
+                const itemRef = firestoreMethods.doc(db, "inventory", id);
+                const next = await firestoreMethods.runTransaction(db, async (transaction) => {
+                    const snap = await transaction.get(itemRef);
+                    const raw = snap.data() ? snap.data().quantity : 0;
+                    const current = parseInt(raw, 10) || 0;
+                    const step = Number(delta);
+                    const nextQty = Math.max(0, current + (Number.isFinite(step) ? step : 0));
+                    transaction.update(itemRef, { quantity: nextQty });
+                    return nextQty;
+                });
+                if (next === 0) { showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, "清零"); }
+                else { showToast(`🔄 ${name} 數量調整為 ${next}`); await logActivity("🔄 數量調整", name, `變更為 ${next}`); }
+                return next;
+            } catch (err) {
+                console.error(err);
+                const msg = err && err.message ? err.message : String(err);
+                alert('❌ 數量更新失敗：' + msg);
+                return null;
+            }
+        };
+
         try {
             document.getElementById('sync-status').textContent = '連線登入中...';
             const firebaseApp = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js");
             const firestore = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
-            firestoreMethods = firestore;
+            const { runTransaction, getDocs, deleteDoc, addDoc, updateDoc, doc } = firestore;
+            firestoreMethods = { getDocs, deleteDoc, addDoc, updateDoc, doc, runTransaction };
+
+            let firebaseAuth = null;
+            try {
+                firebaseAuth = await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js");
+            } catch (authErr) {
+                console.error("Firebase Auth 載入失敗", authErr);
+                authInitState = 'failed';
+                authStateKnown = true;
+            }
 
             const firebaseConfig = { apiKey: "AIzaSyC2piZwjxvqya3gXkWCjz99bcO5MZxvuLI", authDomain: "market-inventory-ef68c.firebaseapp.com", projectId: "market-inventory-ef68c", storageBucket: "market-inventory-ef68c.firebasestorage.app", messagingSenderId: "307248314866", appId: "1:307248314866:web:97f3edb8e9e47a22ed536b" };
             const app = firebaseApp.initializeApp(firebaseConfig);
-            
+
+            if (firebaseAuth) {
+                GoogleAuthProvider = firebaseAuth.GoogleAuthProvider;
+                signInWithPopupFn = firebaseAuth.signInWithPopup;
+                signOutFn = firebaseAuth.signOut;
+                auth = firebaseAuth.getAuth(app);
+                authInitState = 'ready';
+            }
+
             db = firestore.initializeFirestore(app, {
                 localCache: firestore.persistentLocalCache()
             });
 
             inventoryCol = firestore.collection(db, "inventory"); productsCol = firestore.collection(db, "products"); logsCol = firestore.collection(db, "audit_logs");
 
-            firestore.onSnapshot(productsCol, { includeMetadataChanges: true }, (snapshot) => {
-                if (snapshot.empty && navigator.onLine) { Object.entries(defaultProducts).forEach(([b, n]) => firestore.addDoc(productsCol, { barcode: b, name: n })); } 
-                else { productDatabase = {}; snapshot.forEach(doc => { const d = doc.data(); if(d.barcode) productDatabase[d.barcode] = d.name; }); renderQuickButtons(); }
-            });
+            const subscribeCollections = (firestoreSdk) => {
+                unsubFns.forEach((fn) => { try { fn(); } catch (err) { console.error(err); } });
+                unsubFns = [];
 
-            firestore.onSnapshot(logsCol, { includeMetadataChanges: true }, (snapshot) => {
-                currentLogs = []; snapshot.forEach(doc => currentLogs.push({ id: doc.id, ...doc.data() }));
-                currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); if (currentView === 'logs') renderLogs();
-            });
+                unsubFns.push(firestoreSdk.onSnapshot(productsCol, { includeMetadataChanges: true }, (snapshot) => {
+                    if (snapshot.empty && navigator.onLine) { Object.entries(defaultProducts).forEach(([b, n]) => firestoreSdk.addDoc(productsCol, { barcode: b, name: n })); }
+                    else { productDatabase = {}; snapshot.forEach((docSnap) => { const d = docSnap.data(); if (d.barcode) productDatabase[d.barcode] = d.name; }); renderQuickButtons(); }
+                }, handleFirestoreError));
 
-            firestore.onSnapshot(inventoryCol, { includeMetadataChanges: true }, (snapshot) => {
-                currentInventory = []; snapshot.forEach(doc => currentInventory.push({ id: doc.id, ...doc.data() }));
-                updateDashboardStats();
-                if (currentView === 'list') renderTable(); else if (currentView === 'calendar') renderCalendar();
-                
-                if (navigator.onLine) {
-                    document.getElementById('sync-status').textContent = snapshot.metadata.hasPendingWrites ? '🔄 同步中...' : '✅ 已連線 (同步中)';
-                    document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold shadow-sm';
-                }
-            }, (error) => { console.error("Firestore 錯誤", error); });
+                unsubFns.push(firestoreSdk.onSnapshot(logsCol, { includeMetadataChanges: true }, (snapshot) => {
+                    currentLogs = []; snapshot.forEach((docSnap) => currentLogs.push({ id: docSnap.id, ...docSnap.data() }));
+                    currentLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); if (currentView === 'logs') renderLogs();
+                }, handleFirestoreError));
 
-        } catch (e) { console.error("Firebase 載入崩潰", e); }
+                unsubFns.push(firestoreSdk.onSnapshot(inventoryCol, { includeMetadataChanges: true }, (snapshot) => {
+                    readsDenied = false;
+                    currentInventory = []; snapshot.forEach((docSnap) => currentInventory.push({ id: docSnap.id, ...docSnap.data() }));
+                    updateDashboardStats();
+                    if (currentView === 'list') renderTable(); else if (currentView === 'calendar') renderCalendar();
 
-        window.updateQuantity = async function(id, name, currentQty, delta) {
-            let newQty = currentQty + delta; if (newQty < 0) newQty = 0;
-            await firestoreMethods.updateDoc(firestoreMethods.doc(db, "inventory", id), { quantity: newQty });
-            if (newQty === 0) { showToast(`⚪️ ${name} 售完`); await logActivity("⚪️ 售完", name, "清零"); } 
-            else { showToast(`🔄 ${name} 數量調整為 ${newQty}`); await logActivity("🔄 數量調整", name, `變更為 ${newQty}`); }
-        };
+                    if (navigator.onLine) {
+                        document.getElementById('sync-status').textContent = snapshot.metadata.hasPendingWrites ? '🔄 同步中...' : '✅ 已連線 (同步中)';
+                        document.getElementById('sync-status').className = 'bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold shadow-sm';
+                    }
+                    updateAuthUI();
+                }, handleFirestoreError));
+            };
+
+            if (firebaseAuth && auth) {
+                firebaseAuth.onAuthStateChanged(auth, (user) => {
+                    authStateKnown = true;
+                    currentUser = user || null;
+                    updateAuthUI();
+                    if (readsDenied && db) subscribeCollections(firestore);
+                });
+            } else {
+                updateAuthUI();
+            }
+
+            subscribeCollections(firestore);
+        } catch (e) {
+            console.error("Firebase 載入崩潰", e);
+            authInitState = 'failed';
+            authStateKnown = true;
+            updateAuthUI();
+        }
 
         window.setSoldOut = async function(id, name) {
             const reason = prompt(`請輸入「${name}」售完原因(預設:正常售出)：`, "正常售出"); if (reason === null) return;
